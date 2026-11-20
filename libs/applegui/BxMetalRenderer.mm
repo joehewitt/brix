@@ -621,6 +621,9 @@ struct RunRecord {
     std::vector<RunGlyph> glyphs;
     std::vector<RunLine> lines;
     std::vector<CTFontRef> fonts;
+    std::vector<AtlasEntry*> entries;
+    double entryScale = 0;
+    uint64_t entryEpoch = 0;
 };
 
 struct FrameStats {
@@ -4957,7 +4960,7 @@ static void setFullContentMask(MetalRenderer* renderer, Instance& instance) {
 static void emitInstance(
     ExpandState& state,
     uint32_t pipeline,
-    id<MTLTexture> texture,
+    __unsafe_unretained id<MTLTexture> texture,
     const Instance& instance,
     uint32_t shader = 0
 ) {
@@ -5267,7 +5270,14 @@ static bool rasterizeGlyph(
     return true;
 }
 
-static const AtlasEntry* ensureGlyphEntry(
+static void touchGlyphEntry(MetalRenderer* renderer, AtlasEntry& entry) {
+    entry.lastUsedFrame = renderer->frameCount;
+    if (entry.valid) {
+        renderer->glyphAtlas.pages[entry.page].lastUsedFrame = renderer->frameCount;
+    }
+}
+
+static AtlasEntry* ensureGlyphEntry(
     MetalRenderer* renderer,
     CTFontRef font,
     CGGlyph glyph,
@@ -5278,10 +5288,7 @@ static const AtlasEntry* ensureGlyphEntry(
     uint64_t key = glyphKey(font, glyph, subpixel, scale);
     auto found = renderer->glyphEntries.find(key);
     if (found != renderer->glyphEntries.end()) {
-        found->second.lastUsedFrame = renderer->frameCount;
-        if (found->second.valid) {
-            renderer->glyphAtlas.pages[found->second.page].lastUsedFrame = renderer->frameCount;
-        }
+        touchGlyphEntry(renderer, found->second);
         return &found->second;
     }
 
@@ -5362,7 +5369,9 @@ static void emitGlyphInstance(
     ExpandState& state,
     const GlyphRunOp& op,
     const AtlasEntry& entry,
-    id<MTLTexture> texture,
+    __unsafe_unretained id<MTLTexture> texture,
+    float textureWidth,
+    float textureHeight,
     double penFloor,
     double baseline,
     double glyphY,
@@ -5378,10 +5387,10 @@ static void emitGlyphInstance(
     );
     instance.rect[2] = entry.width;
     instance.rect[3] = entry.height;
-    instance.params[0] = entry.x / static_cast<float>(texture.width);
-    instance.params[1] = entry.y / static_cast<float>(texture.height);
-    instance.params[2] = entry.width / static_cast<float>(texture.width);
-    instance.params[3] = entry.height / static_cast<float>(texture.height);
+    instance.params[0] = entry.x / textureWidth;
+    instance.params[1] = entry.y / textureHeight;
+    instance.params[2] = entry.width / textureWidth;
+    instance.params[3] = entry.height / textureHeight;
     instance.color = glyph.hasColor ? glyph.color : op.color;
     instance.kind = 2;
     instance.opacity = 1;
@@ -5430,7 +5439,19 @@ static bool emitFallbackGlyph(
     entry.offsetX = static_cast<int16_t>(bitmap.left);
     entry.offsetTopY = static_cast<int16_t>(bitmap.top);
     entry.valid = true;
-    emitGlyphInstance(state, op, entry, texture, penFloor, baseline, glyph.y, glyph, paint);
+    emitGlyphInstance(
+        state,
+        op,
+        entry,
+        texture,
+        static_cast<float>(bitmap.width),
+        static_cast<float>(bitmap.height),
+        penFloor,
+        baseline,
+        glyph.y,
+        glyph,
+        paint
+    );
     ++stats.fallbackRuns;
     return true;
 }
@@ -5485,6 +5506,15 @@ static void expandGlyphRun(
     }
     GlyphPaint paint = glyphRunPaint(state, op);
     double zoom = state.matrix[0];
+    double glyphScale = renderer->scale * zoom;
+    size_t slots = run.glyphs.size() * 4;
+    if (run.entryScale != glyphScale || run.entryEpoch != renderer->glyphAtlas.evictions ||
+            run.entries.size() != slots) {
+        run.entries.assign(slots, nullptr);
+        run.entryScale = glyphScale;
+        run.entryEpoch = renderer->glyphAtlas.evictions;
+    }
+    const float atlasSize = static_cast<float>(kAtlasSize);
     double blockX = op.x * zoom + state.matrix[4];
     double blockY = op.y * zoom + state.matrix[5];
     double offsetY = (op.height - run.height) / 2.0;
@@ -5502,14 +5532,18 @@ static void expandGlyphRun(
             double pen = (blockX + (offsetX + glyph.x) * zoom) * renderer->scale;
             double penFloor = floor(pen);
             int subpixel = static_cast<int>(floor((pen - penFloor) * 4.0)) & 3;
-            const AtlasEntry* entry = ensureGlyphEntry(
-                renderer,
-                font,
-                glyph.glyph,
-                subpixel,
-                renderer->scale * zoom,
-                stats
-            );
+            size_t slot = static_cast<size_t>(line.glyphStart + offset) * 4 + static_cast<size_t>(subpixel);
+            AtlasEntry* entry = run.entries[slot];
+            if (entry) {
+                touchGlyphEntry(renderer, *entry);
+            } else {
+                entry = ensureGlyphEntry(renderer, font, glyph.glyph, subpixel, glyphScale, stats);
+                if (run.entryEpoch != renderer->glyphAtlas.evictions) {
+                    run.entries.assign(slots, nullptr);
+                    run.entryEpoch = renderer->glyphAtlas.evictions;
+                }
+                run.entries[slot] = entry;
+            }
             if (!entry) {
                 emitFallbackGlyph(
                     state,
@@ -5523,12 +5557,14 @@ static void expandGlyphRun(
                     stats
                 );
             } else if (entry->valid) {
-                id<MTLTexture> texture = renderer->glyphAtlas.pages[entry->page].texture;
+                __unsafe_unretained id<MTLTexture> texture = renderer->glyphAtlas.pages[entry->page].texture;
                 emitGlyphInstance(
                     state,
                     op,
                     *entry,
                     texture,
+                    atlasSize,
+                    atlasSize,
                     penFloor,
                     baseline,
                     glyph.y,
@@ -11241,6 +11277,7 @@ extern "C" int64_t brixGuiMetalRunRegister(void* pointer, void* textLayout) {
     run.glyphs.clear();
     run.lines.clear();
     run.fonts.clear();
+    run.entries.clear();
 
     int64_t lineCount = brixGraphicsTextLayoutGetLineCount(textLayout);
     int64_t runCount = brixGraphicsTextLayoutGetRunCount(textLayout);
@@ -11346,6 +11383,7 @@ extern "C" void brixGuiMetalRunRelease(
     run.fonts.clear();
     run.glyphs.clear();
     run.lines.clear();
+    run.entries.clear();
     run.layoutSerial = 0;
     run.alive = false;
     ++run.generation;
