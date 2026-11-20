@@ -1032,6 +1032,24 @@ Exception: Equalities between Baz and Bar disagree: this one makes 1 Baz 1 Bar, 
     ^^^^^^^^^^^^^^^^^^
 ```
 
+### An equality between a unit and itself is rejected unless it makes one of one.
+
+```brix compile-error
+(main
+  (print (as 1foo Foo UnitString))
+)
+
+(type-line + Foo (alias foo) (is F64))
+(unit + 2foo 1foo)
+```
+
+```output
+Exception: An equality between Foo and itself makes 1 Foo 0.5 Foo, but a unit is always 1 of itself; relate Foo to another unit
+<no file:7>
+    (unit + 2foo 1foo)
+    ^^^^^^^^^^^^^^^^^^
+```
+
 ### Units declared from one number type of a module's own are one another, so equalities that give them different ratios elsewhere are rejected where the module is imported.
 
 ```brix compile-error
