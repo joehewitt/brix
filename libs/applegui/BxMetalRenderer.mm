@@ -69,12 +69,15 @@ enum PacketOpKind : uint8_t {
     PacketOpSprite,
     PacketOpPushTransformLayer,
     PacketOpBackdropShader,
+    PacketOpQuads,
 };
 
 struct QuadOp {
     float x, y, width, height, cornerRadius;
     uint32_t color;
 };
+
+static_assert(sizeof(QuadOp) == 24, "Quad wire layout must stay 24 bytes");
 
 struct BorderOp {
     float x, y, width, height, cornerRadius, borderWidth;
@@ -1325,6 +1328,22 @@ static void appendPacketOp(MetalRenderer* renderer, PacketOpKind kind, const Val
     packet->bytes.resize(required);
     packet->bytes[offset] = static_cast<uint8_t>(kind);
     memcpy(packet->bytes.data() + offset + 1, &value, sizeof(Value));
+    ++packet->opCount;
+}
+
+static void appendQuadsPacketOp(MetalRenderer* renderer, const QuadOp* quads, uint32_t count) {
+    FramePacket* packet = renderer->currentPacket;
+    if (!packet || !count) {
+        return;
+    }
+    size_t offset = packet->bytes.size();
+    size_t bytes = static_cast<size_t>(count) * sizeof(QuadOp);
+    size_t required = offset + 1 + sizeof(count) + bytes;
+    ensureVectorCapacity(renderer, packet->bytes, required);
+    packet->bytes.resize(required);
+    packet->bytes[offset] = static_cast<uint8_t>(PacketOpQuads);
+    memcpy(packet->bytes.data() + offset + 1, &count, sizeof(count));
+    memcpy(packet->bytes.data() + offset + 1 + sizeof(count), quads, bytes);
     ++packet->opCount;
 }
 
@@ -4977,6 +4996,65 @@ static void emitInstance(
     ++batches.back().count;
 }
 
+static void emitQuads(ExpandState& state, const uint8_t* records, uint32_t count) {
+    MetalRenderer* renderer = state.renderer;
+    MTLScissorRect scissor = clipToScissor(renderer, state.clip);
+    uint32_t blend = drawBlend(state);
+    if (!count || !scissor.width || !scissor.height || blend == kBlendSkip) {
+        return;
+    }
+    std::vector<Instance>& instances = renderer->instances;
+    std::vector<Batch>& batches = *state.batchSink;
+    if (batches.empty() || batches.back().pipeline != PipelineTier1 ||
+        batches.back().texture != nil || !scissorsEqual(batches.back().scissor, scissor) ||
+        batches.back().blend != (blend != 0) || batches.back().shader != 0 ||
+        batches.back().start + batches.back().count != instances.size()) {
+        ensureVectorCapacity(renderer, batches, batches.size() + 1);
+        Batch batch = {PipelineTier1, nil, scissor, static_cast<uint32_t>(instances.size()), 0, blend != 0, 0};
+        batches.push_back(batch);
+    }
+    Instance base = {};
+    setFullContentMask(renderer, base);
+    base.opacity = 1;
+    base.roundedClip = state.roundedClip;
+    base.coverageClip = state.coverageClip;
+    base.blend = blend;
+    const float scaleX = static_cast<float>(state.matrix[0] * renderer->scale);
+    const float scaleY = static_cast<float>(state.matrix[3] * renderer->scale);
+    const float shiftX = static_cast<float>(state.matrix[4] * renderer->scale);
+    const float shiftY = static_cast<float>(state.matrix[5] * renderer->scale);
+    size_t start = instances.size();
+    ensureVectorCapacity(renderer, instances, start + count);
+    instances.resize(start + count, base);
+    Instance* out = instances.data() + start;
+    float left = INFINITY, top = INFINITY, right = -INFINITY, bottom = -INFINITY;
+    for (uint32_t index = 0; index < count; ++index) {
+        QuadOp op;
+        memcpy(&op, records + static_cast<size_t>(index) * sizeof(QuadOp), sizeof(QuadOp));
+        Instance& instance = out[index];
+        instance.rect[0] = op.x * scaleX + shiftX;
+        instance.rect[1] = op.y * scaleY + shiftY;
+        instance.rect[2] = op.width * scaleX;
+        instance.rect[3] = op.height * scaleY;
+        instance.params[0] = op.cornerRadius * scaleX;
+        instance.color = op.color;
+        left = std::min(left, instance.rect[0]);
+        top = std::min(top, instance.rect[1]);
+        right = std::max(right, instance.rect[0] + instance.rect[2]);
+        bottom = std::max(bottom, instance.rect[1] + instance.rect[3]);
+    }
+    batches.back().count += count;
+    if (state.layerDepth) {
+        includeLayerBounds(
+            state,
+            std::max<double>(left - 1.0, scissor.x),
+            std::max<double>(top - 1.0, scissor.y),
+            std::min<double>(right + 1.0, scissor.x + scissor.width),
+            std::min<double>(bottom + 1.0, scissor.y + scissor.height)
+        );
+    }
+}
+
 template <typename Value>
 static bool readPacketValue(const uint8_t*& cursor, const uint8_t* end, Value& value) {
     if (static_cast<size_t>(end - cursor) < sizeof(Value)) {
@@ -8177,6 +8255,13 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
             instance.kind = 0;
             instance.opacity = 1;
             emitInstance(state, PipelineTier1, nil, instance);
+        } else if (kind == PacketOpQuads) {
+            uint32_t count;
+            if (!readPacketValue(cursor, end, count)) break;
+            size_t bytes = static_cast<size_t>(count) * sizeof(QuadOp);
+            if (static_cast<size_t>(end - cursor) < bytes) break;
+            emitQuads(state, cursor, count);
+            cursor += bytes;
         } else if (kind == PacketOpBorder) {
             BorderOp op;
             if (!readPacketValue(cursor, end, op)) break;
@@ -12531,7 +12616,7 @@ static bool itemsDrawable(
             return false;
         }
         if (item.kind != 0 && item.kind != 1 && item.kind != 2 && item.kind != 4 && item.kind != 7 &&
-                item.kind != 9 && item.kind != 10 && item.kind != 11 && item.kind != 12) {
+                item.kind != 9 && item.kind != 10 && item.kind != 11 && item.kind != 12 && item.kind != 14) {
             return false;
         }
         if (item.kind == 4 || item.kind == 9 || item.kind == 10 || item.kind == 11 || item.kind == 12) {
@@ -12666,9 +12751,12 @@ extern "C" bool brixGuiMetalPacketAppendItems(
     const uint32_t* itemStates,
     const uint64_t* imageIdentities,
     uint64_t imageCount,
-    int64_t pathSet
+    int64_t pathSet,
+    const void* quadBytes,
+    uint64_t quadCount
 ) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    const QuadOp* quads = static_cast<const QuadOp*>(quadBytes);
     const BxGuiMetalDisplayItem* items =
         static_cast<const BxGuiMetalDisplayItem*>(scalarItemBytes);
     const BxGuiMetalRect* clips = static_cast<const BxGuiMetalRect*>(clipBytes);
@@ -12731,6 +12819,10 @@ extern "C" bool brixGuiMetalPacketAppendItems(
                 item.data0,
             };
             appendPacketOp(renderer, PacketOpQuad, op);
+        } else if (item.kind == 14) {
+            if (quads && item.data1 <= quadCount && item.data2 <= quadCount - item.data1) {
+                appendQuadsPacketOp(renderer, quads + item.data1, item.data2);
+            }
         } else if (item.kind == 1) {
             BorderOp op = {
                 item.x,

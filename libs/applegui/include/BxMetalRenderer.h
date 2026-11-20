@@ -249,7 +249,9 @@ extern "C" bool brixGuiMetalPacketAppendItems(
     const uint32_t* itemStates,
     const uint64_t* imageIdentities,
     uint64_t imageCount,
-    int64_t pathSet
+    int64_t pathSet,
+    const void* quadBytes,
+    uint64_t quadCount
 );
 extern "C" int64_t brixGuiMetalChunkPaths(
     void* renderer,

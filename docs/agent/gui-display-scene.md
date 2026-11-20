@@ -23,7 +23,7 @@ layout is the native bulk-encode seam and must not be replaced with per-item FFI
 
 | Offset | Field | Type | Meaning |
 | ---: | --- | --- | --- |
-| 0 | `kind` | `U8` | quad, border, glyph, vector, image, opaque, shadow, styled, canvas image, backdrop, canvas pattern, or sprite |
+| 0 | `kind` | `U8` | quad, border, glyph, vector, image, opaque, shadow, styled, canvas image, backdrop, canvas pattern, sprite, backdrop shader, or quad batch |
 | 1 | `flags` | `U8` | kind-specific presence and representation flags |
 | 2 | `aux` | `U16` | kind-specific small value, currently text alignment |
 | 4 | `x` | `F32` | logical geometry |
@@ -44,6 +44,19 @@ Vector geometry and images use `(index, generation)` resource handles. The CoreG
 item may index the chunk's retained `TextLayout` side table. `DisplayGlyphRegistrar` is the
 record-time extraction seam: when a registrar returns a handle, the same item stores its index and
 generation instead, without re-recording any surrounding display data.
+
+## Quad batches
+
+`Canvas.quads` draws a list of `Quad` records, each a rounded rectangle with a packed RGBA8 color:
+five `F32` fields and a `U32`, 24 bytes with no padding. The recorder copies the list into the
+chunk side table's `quads` and adds one quads item whose geometry is the batch's bounds and whose
+`data1` and `data2` give the start and count. The Metal renderer turns that range into a single
+packet op and fills its instances in one loop, with the clip, scissor, and blend resolved once.
+CoreGraphics replay draws each record as an outline. A `DisplayFrame` carries the records in its
+`quads` table, and `draw-frame` re-records each batch under the mapped state.
+
+Under a fill paint, a shape fill, or a transform that is not a translation, the recorder records
+each quad as its own item instead, so both forms render identically.
 
 ## Chunks, groups, and opaque paint
 
