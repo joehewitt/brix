@@ -696,7 +696,7 @@ bar 1
 1025q0
 ```
 
-### Subtracting, dividing or multiplying across units converts the right side to the unit of the left.
+### Subtracting or multiplying across units converts the right side to the unit of the left, and dividing gives a plain number.
 
 ```brix
 (main
@@ -712,7 +712,7 @@ bar 1
 
 ```output
 7.5hours
-4hours
+4f
 8hours
 ```
 
@@ -1455,3 +1455,56 @@ Exception: Expected Em here, but this is Tk, and there is no conversion between 
 2000f
 1.5f
 ```
+
+### Dividing a unit by another of its family gives a plain number, worked out in whichever unit holds the other with no fraction lost.
+
+```brix
+(main
+  (print (as (/ 500ms 2s) UnitString))
+  (print (as (/ 30minutes 2hours) UnitString))
+  (print (as (/ 4hours 2hours) UnitString))
+  (print (as (/ 300cents 1dollars) UnitString))
+  (print (as (/ 3dollars 50cents) UnitString))
+  (print (as (/ 1dollars 300cents) UnitString))
+  (print (as (* (/ 500ms 2s) 4) UnitString))
+  (print (as (/ 7ms 2) UnitString))
+  (print (as (% 7ms 2ms) UnitString))
+)
+
+(type-line + Ms (alias ms) (is F64))
+(type-line + S (alias s) (is 1000ms))
+(type-line + Minutes (alias minutes) (is 60s))
+(type-line + Hours (alias hours) (is 60minutes))
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+```
+
+```output
+0.25f
+0.25f
+2f
+3i
+6i
+0i
+1f
+3.5ms
+1ms
+```
+
+### An assigning divide by a unit of its place's family keeps the place's unit.
+
+```brix
+(main
+  (let wait S 10s)
+  (/= wait 500ms)
+  (print (as wait UnitString))
+)
+
+(type-line + Ms (alias ms) (is F64))
+(type-line + S (alias s) (is 1000ms))
+```
+
+```output
+20s
+```
+

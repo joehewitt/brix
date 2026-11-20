@@ -209,16 +209,19 @@ true
 180seconds
 120seconds
 99seconds
-4hours
+4f
 true
 true
 ```
 
-- **The left unit.** For `+`, `-`, `*`, `/` and `%`, the right operand converts to the left
-  operand's unit, and the result is in the left's unit.
-- **No compound units.** Multiplying or dividing two units does not make a new unit and does not
-  cancel them: the right operand converts as for `+`, so `(/ 2hours 30minutes)`{.brix} is `4hours`.
-  Units are not dimensional analysis. A quantity such as a speed is a unit of its own, made by a
+- **The left unit.** For `+`, `-`, `*` and `%`, the right operand converts to the left operand's
+  unit, and the result is in the left's unit.
+- **Quotients.** Dividing a unit by another of its family gives a plain number, how many of the
+  right fit in the left: `(/ 2hours 30minutes)`{.brix} is `4`. Both convert to whichever of the two
+  units holds the other with no fraction lost, so `(/ 3dollars 50cents)` is 6, and in integers the
+  quotient drops its fraction as integer division does. `(/= wait 500ms)` keeps the unit of `wait`.
+- **No compound units.** Multiplying two units does not make a new unit: the right operand converts
+  as for `+`, so `(* 4hours 120minutes)` is `8hours`. Units are not dimensional analysis. A quantity such as a speed is a unit of its own, made by a
   function that takes the two units, as in `(fn-expr + per Speed (param distance Length) (param
   time Seconds) body)`.
 - **Two families.** `+`, `-` and `%` between units of two families that no equality joins are
