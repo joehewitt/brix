@@ -4,7 +4,6 @@
 (import /graphics/point)
 (import /graphics/primitives)
 (import /math)
-(import /os/path)
 (blank)
 (prop _ text-layout-live Size (= 0))
 (prop _ text-layout-high-water Size (= 0))
@@ -594,40 +593,6 @@
     (default
       (call tight-text-width-serves width maximum-width cap)
     )
-  )
-)
-
-(type + FontRegistrationError (is Error)
-  (fn-to-expr + String
-    (?? message "Unable to register font")
-  )
-)
-
-(type + FontRegistration
-  (implements Closable)
-  (prop + family String)
-  (blank)
-  (prop _ native (? Pointer))
-  (fn-do + This _ (?! FontRegistrationError)
-    (param path String)
-    (let candidate (call C:brixGraphicsFontRegister (call native-path path)))
-    (throw (call FontRegistrationError (str "Unable to register font '" path "'")) (if (not (call C:brixGraphicsFontRegistrationIsValid candidate))))
-    (blank)
-    (= native candidate)
-    (= family (call C:brixGraphicsFontRegistrationGetFamily candidate))
-  )
-  (fn-do + close _
-    (if native
-      (call C:brixGraphicsFontRegistrationRelease native)
-      (= native null)
-    )
-  )
-)
-
-(type + FontCatalog
-  (fn-expr + register FontRegistration (?! FontRegistrationError)
-    (param path String)
-    (call FontRegistration path)
   )
 )
 
