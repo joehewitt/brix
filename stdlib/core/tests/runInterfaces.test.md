@@ -1653,6 +1653,96 @@ rex
 seven
 ```
 
+### A property of two instances of one generic interface is read through the property each instance is delegated to.
+
+```brix
+(main
+  (let holder (call Holder))
+  (print (. (as holder (of Labeled Int)) value))
+  (print (. (as holder (of Labeled String)) value))
+)
+
+(type + (of Labeled Item) (is Interface)
+  (fn-expr + value Item :get)
+)
+
+(type + Holder
+  (delegate (of Labeled Int))
+  (prop _ numbers (of Box Int))
+  (delegate (of Labeled String))
+  (prop _ texts (of Box String))
+  (fn-do + This _
+    (= numbers (call (of Box Int) 7))
+    (= texts (call (of Box String) "seven"))
+  )
+)
+
+(type + (of Box Item)
+  (implements (of Labeled Item))
+  (prop + value Item)
+  (fn-do + This _
+    (param value _)
+  )
+)
+```
+
+```output
+7
+seven
+```
+
+### Two interfaces that declare the same members, delegated to two properties that hold one class, are each answered by their own property: a stored property and a function.
+
+```brix
+(main
+  (let holder (call Holder))
+  (print (. (as holder Front) side))
+  (print (. (as holder Back) side))
+  (print (call (. (as holder Front) told)))
+  (print (call (. (as holder Back) told)))
+)
+
+(type + Front (is Interface)
+  (fn-expr + side String :get)
+  (fn-expr + told String)
+)
+
+(type + Back (is Interface)
+  (fn-expr + side String :get)
+  (fn-expr + told String)
+)
+
+(type + Holder
+  (delegate Front)
+  (prop _ front Card)
+  (delegate Back)
+  (prop _ back Card)
+  (fn-do + This _
+    (= front (call Card "heads"))
+    (= back (call Card "tails"))
+  )
+)
+
+(type + Card
+  (implements Front)
+  (implements Back)
+  (prop + side String)
+  (fn-do + This _
+    (param side _)
+  )
+  (fn-expr + told String
+    (str "tells " side)
+  )
+)
+```
+
+```output
+heads
+tails
+tells heads
+tells tails
+```
+
 ### Self-referential generic interface conformance (Node as TreeHost'Node) compiles without recursing infinitely during type creation, and constrained generic entry points dispatch the host's concretely typed hook statically.
 
 ```brix

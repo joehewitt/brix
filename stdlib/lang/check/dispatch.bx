@@ -1521,9 +1521,8 @@
     ; A class that implements an interface through a property answers that interface's methods
     ; with the property's own.
     (let delegates (call (. types delegates-of) receiver))
-    (let narrowed (call some (..< 0 (/ (. delegates length) 2)) (:where (call delegates-for delegates each))))
     (for (in offset (..< 0 (/ (. delegates length) 2)))
-      (if (and narrowed (not (call delegates-for delegates offset)))
+      (if (call skips-delegate receiver offset)
         (continue)
       )
       (if (call declares-method ([] delegates (* offset 2)) name kind)
@@ -1535,10 +1534,16 @@
       )
     )
   )
-  (fn-expr _ delegates-for Bool
-    (param delegates (of ImmutableArray TypeId ArenaBacking))
+  (fn-do _ skips-delegate Bool
+    (param level TypeId)
     (param offset Size)
-    (and (!= delegated no-type) (call reaches-interface ([] delegates (* offset 2)) delegated))
+    (return-if false (if (or (== delegated no-type) (call delegates-for level offset))))
+    (return (call some (..< 0 (/ (. (call (. types delegates-of) level) length) 2)) (:where (call delegates-for level each))))
+  )
+  (fn-expr _ delegates-for Bool
+    (param level TypeId)
+    (param offset Size)
+    (call reaches-interface ([] (call (. types delegates-of) level) (* offset 2)) delegated)
   )
   (fn-do _ reaches-interface Bool
     (param interface TypeId)
@@ -1668,6 +1673,9 @@
     (let current receiver)
     (while (!= current no-type)
       (for (in offset (..< 0 (/ (. (call (. types delegates-of) current) length) 2)))
+        (if (call skips-delegate current offset)
+          (continue)
+        )
         (let delegate (call delegate-type current offset))
         (let found (call (. types property-named) current (call (. types delegate-name) current offset)))
         (if (or (not found) (== delegate no-type) (== delegate invalid-type))
@@ -1750,7 +1758,7 @@
     (for (in back (..< 0 (. levels length)))
       (let level ([] levels (- (. levels length) 1 back)))
       (for (in offset (..< 0 (/ (. (call (. types delegates-of) level) length) 2)))
-        (if (not (call declares-property ([] (call (. types delegates-of) level) (* offset 2)) name))
+        (if (or (call skips-delegate level offset) (not (call declares-property ([] (call (. types delegates-of) level) (* offset 2)) name)))
           (continue)
         )
         (let delegate (call delegate-type level offset))
