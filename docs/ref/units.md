@@ -417,6 +417,63 @@ Raising a unit to a whole number multiplies it by itself, and `sqrt` from `/math
 - **Assignment.** `(%%= place n)` keeps the place's unit, so a power in another unit is an error.
 - **Integers.** A power or a root in a unit stored as an integer is a plain number.
 
+### Positions
+
+A position is a point on a scale, such as an hour of the day or a temperature, and an amount is a
+distance along it, such as a number of hours or of degrees. A position is a unit on its own whose
+type declares its own `+` and `-`: a position plus an amount is a position, and a position minus
+another is the amount between them.
+
+```brix
+(import /time/datetime)
+(import /time/duration)
+(import /units/temperature)
+
+(main
+  (print (as (+ 23hour 2hours) UnitString))
+  (print (as (- 1hour 3hour) UnitString))
+  (print (as (- 1hour 3hours) UnitString))
+  (print (as (+ 59minute 1hours) UnitString))
+  (print (as (+ 20°c 5kelvins) UnitString))
+  (print (as (- 70°f 50°f) UnitString))
+  (print (as (as 100°c Fahrenheit) UnitString))
+)
+```
+
+```output
+1hour
+-2hours
+22hour
+59minute
+25°c
+20rankines
+212°f
+```
+
+- **Own operators.** A number type that declares an arithmetic operator, as in `(fn-expr + (infix
+  this + (param amount Hours)) Hour body)`{.brix}, answers it itself, in place of the built-in one.
+  Operands its operators do not take are an error, so adding two positions is one: `(+ 23hour
+  2hour)` is `Operator "+" is not defined for Hour and Hour`. An operator it does not declare
+  stays built in. See Operators.
+- **Plain numbers** convert to the operator's parameter: `(+ 23hour 2)`{.brix} is `1hour`. With a
+  number of another type on the left of `+` or `*`, the position's operator answers with the
+  operands the other way around: `(+ 2hours 23hour)`{.brix} is `1hour`.
+- **Assignment.** `(+= start 3hours)` adds by the position's `+`.
+- **Hours, minutes and seconds.** `/time/datetime` declares `hour`, `minute` and `second` as
+  positions, whose amounts are the `hours`, `minutes` and `seconds` of `/time/duration`. Adding
+  wraps around the day or the hour, and any duration converts to the amount first: `(+ 59minute
+  1hours)`{.brix} is `59minute`. Subtracting one position from another is signed: `(- 1hour
+  3hour)`{.brix} is `-2hours`.
+- **Temperatures.** `/units/temperature` declares the positions `°c`, `°f` and `kelvin`, which
+  convert into one another, and the amounts `kelvins` and `rankines`, one family in which
+  `9rankines` is `5kelvins`. A difference of Celsius or Kelvin temperatures is in `kelvins`, and
+  one of Fahrenheit temperatures in `rankines`.
+- **Casts.** A position has no equality, so `as` between it and an amount casts its number:
+  `(as 120minutes Hour)`{.brix} is `120hour`. Add the amount to the start of the scale instead:
+  `(+ 0hour 120minutes)`{.brix} is `2hour`.
+- **Inside its own operators** and conversions, a number type works on its plain number, as in
+  `(as this F64)`{.brix}, since an operator or a conversion of its own would call itself.
+
 ## Conversions
 
 ```brix
@@ -512,9 +569,10 @@ Exception: Dollars cannot be cast to Seconds; there is no conversion between the
 | --- | --- |
 | `/time/duration` | `ns`, `µs`, `ms`, `s` or `seconds`, `minutes`, `hours`, `days`, `weeks`, `months` (31 days), `years` (365 days), `decades`, `centuries` and `milleniums`, on the base `Duration`. |
 | `/time/flicks` | `flicks`, joined to the durations. |
-| `/time/datetime` | `second`, `minute` and `hour` of a day, and `am` and `pm`, whose literals are a `Time`: `3pm`. |
+| `/time/datetime` | `second`, `minute` and `hour`, [positions](#positions) in a minute, an hour and a day, and `am` and `pm`, whose literals are a `Time`: `3pm`. |
 | `/math` | `rad`, and `°` or `deg`. `π` is in radians. |
 | `/units` | `%%` (`Ratio`) and `%` (`Percent`), and the distances of `/units/distance`. |
+| `/units/temperature` | The positions `°c`, `°f` and `kelvin`, and the amounts `kelvins` and `rankines`. |
 | `/units/distance` | `nm`, `µm`, `mm`, `cm`, `meters`, `km`, `inches`, `ft`, `yards` and `miles`, on the base `Distance`. |
 | `/graphics/primitives` | `px`, a `Coord`, in no family. |
 | `/tui/primitives` | `tx`, a `Coord` stored as an `I16`, in no family. |

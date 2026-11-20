@@ -387,7 +387,12 @@ true
   `(fn-expr + (infix this + (param n Int)) Int body)`{.brix}, is `_` where it is left to the body.
 - **Left operand.** An operator is looked up on the type of its left operand, and never on the
   right one's. For a value of another type on the left, as for `(* 3 a)`{.brix} above, declare
-  the operator in an extension of that type; see Types.
+  the operator in an extension of that type; see Types. A number type's own `+` and `*` are the
+  exception: with a number of another type on the left, they answer with the operands the other
+  way around.
+- **Number types.** A number type that declares `+`, `-`, `*`, `/` or `%` answers it itself, in
+  place of the built-in one, for the operands its operators take, and operands they do not take
+  are an error. An operator it does not declare stays built in. See Units.
 - **Derived operators.** A type that defines `==` gets `!=`, and one that defines `!=` gets `==`. A
   type that defines `>` and `==` gets `<`, and an order no function answers is the negation of its
   opposite, so `<=` is answered by `>`. `(has a b)`{.brix} and `(has-not a b)`{.brix} each give

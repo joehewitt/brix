@@ -90,7 +90,8 @@ Durations, dates, clocks and timers. `/time` gathers every module except `/time/
 - `/time/duration`: `Duration`, the units from `ns` to `milleniums`, `wait` and `timeout`.
 - `/time/clock`: `ClockTime`, `measure`, and the `clock` effect, whose doors every read of the clock
   and every timed wait go through; see Functions.
-- `/time/datetime`: `DateTime`, `Date`, `Time`, `Month`, `now` and `today`.
+- `/time/datetime`: `DateTime`, `Date`, `Time`, `Month`, `now` and `today`, and the positions
+  `Hour`, `Minute` and `Second`.
 - `/time/zone`: `TimeZone`, `utc` and `local`.
 - `/time/timestamp`: reading and writing ISO 8601, RFC 2822 and RFC 3339 timestamps.
 - `/time/deadline`: `Deadline`.
@@ -118,8 +119,10 @@ Durations, dates, clocks and timers. `/time` gathers every module except `/time/
 
 `/units` declares `Percent` (`%`) and `Ratio` (`%%`), pure numbers that scale what they multiply,
 and `Scale`, which maps a ratio onto a range. It passes on `/units/distance`, the lengths from `nm`
-to `miles`. Pixels are declared in `/graphics/primitives` and durations in `/time/duration`. Units
-explains how unit families are declared, converted and combined.
+to `miles`. `/units/temperature`, imported on its own, declares the temperatures `°c`, `°f` and
+`kelvin` and the differences between them, `kelvins` and `rankines`. Pixels are declared in
+`/graphics/primitives` and durations in `/time/duration`. Units explains how unit families are
+declared, converted and combined.
 
 ### data
 

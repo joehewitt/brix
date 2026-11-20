@@ -235,6 +235,8 @@ it is 3 m
   `Kilo`, does not convert to `Kilo`, and one that converts to `I32` does not convert to `Int`.
 - **`from` before `to`.** When one type declares a conversion from a second, and the second a
   conversion to the first, the `from` is used.
+- **Number types.** A conversion a number type declares to or from another number type is used in
+  place of a cast of its number, so `(as 100°c Fahrenheit)`{.brix} is `212°f`.
 - **Derived classes and interfaces.** A class uses its base class's conversions, and declares its
   own to replace them, which are used even when the object is held as its base. An interface can
   declare conversions with bodies for the types that implement it.
