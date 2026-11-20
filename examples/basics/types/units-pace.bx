@@ -1,7 +1,11 @@
-; Units: the library's durations and distances convert at a function's edge, so
-; a caller may think in miles and hours while the function works in km and minutes.
+; Units: a pace is declared as minutes per kilometer, so a time divided by a
+; distance is a pace, and a pace times a distance is a time, whatever units each
+; is written in.
 (import /time/duration)
 (import /units/distance)
+(blank)
+(type-line + Pace (alias mpk) (is F64))
+(unit + 1mpk (/ 1minutes 1km))
 (blank)
 
 (main
@@ -9,26 +13,22 @@
   (let finish (+ 3hours 30minutes))
   (blank)
   (print (str "the course is " (call (. (as marathon Kilometers) places) 1) " km"))
-  ; Miles and hours go in where kilometers and minutes are asked for.
-  (print (str "pace: " (call (. (call pace marathon finish) places) 2) " minutes per km"))
+  ; Hours over miles come out in minutes per kilometer.
+  (print (str "pace: " (call (. (/ finish marathon) places) 2) " minutes per km"))
   (for (in mark (list 10km 21.1km 30km 42.2km))
     (let reached (call split mark marathon finish))
     (print (str (as mark UnitString) " after " (call (. reached places) 0) " minutes"))
   )
-)
-
-(fn-expr + pace _
-  (param distance Kilometers)
-  (param time Minutes)
-  ; Units do not combine into "minutes per km" on their own. A function says what
-  ; the division means, and gives a plain number.
-  (/ (as time Float) (as distance Float))
+  (blank)
+  ; A pace times miles leaves minutes, which convert to hours.
+  (let steady (as (* 6mpk marathon) Hours))
+  (print (str "at 6 minutes per km the course takes " (call (. steady places) 2) " hours"))
 )
 
 (fn-expr + split Minutes
   (param mark Kilometers)
   (param distance Kilometers)
   (param time Minutes)
-  ; Multiplying by a plain number keeps the unit, so this result is in minutes.
-  (* time (/ (as mark Float) (as distance Float)))
+  ; Two distances divide to a plain fraction, which scales the time.
+  (* time (/ mark distance))
 )
