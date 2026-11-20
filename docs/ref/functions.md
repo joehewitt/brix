@@ -955,7 +955,8 @@ After its annotations, a function's header can take a `(without …)` part and `
   | `probe-safepoints` | Hold a point where probes may stop it. |
   | `gc` | Do any of `heap`, `safepoints` and `suspend`. |
 
-  Any other name bans an effect a library declares: see Effects and doors. On a C function in a
+  Any other name bans an effect a library declares, and `outside` bans every effect: see Effects
+  and doors. On a C function in a
   header module, `(without gc)` says the function never reaches the collector, and
   `(without blocking)` that it is called between two of the collector's checks; see Native code
   and memory. A name that is neither a restriction nor an effect the file sees, or one named
@@ -997,11 +998,16 @@ which a program makes that contact, its doors, with a `(door …)` part after th
   `parse-document (without network) → load-schema → connect-to(host, port)`. Past a call the
   compiler cannot resolve to one function, a call through a function value, of an interface
   member, or of a method a class declares again, a door the code reaches panics where it runs,
-  as in `connect-to reached a door of 'network' under 'without network'`, and the stack trace
+  as in `connect-to reached a door of 'network' while 'network' is banned`, and the stack trace
   gives the path. So a list's observers, which a ban cannot see past, pass until one of them
   reaches the outside world. A ban holds in a task the code starts, and over a function value
   wherever it was made. A fake bound inside the ban still answers its doors, and a ban inside a
   binding refuses them: the innermost of the two holds.
+- **Outside.** `(without outside)` bans every effect the program declares, its own and those of
+  the libraries it uses, with no import of the modules that declare them. It is no restriction, so
+  `(without outside heap)` bans both. An error it reports names the effect whose door the code
+  reaches, as in `cannot reach a door of 'network' under 'without outside'`. No effect may be named
+  `outside`, and a `with` binds a fake to one effect, so it takes no `outside`.
 - **What a ban promises.** Code under a ban never reaches a door of the effect: where the compiler
   can show it would, that is an error, and anywhere else it panics instead. A ban covers only what
   libraries claim. A C function that no effect claims passes, and so does what native code does by

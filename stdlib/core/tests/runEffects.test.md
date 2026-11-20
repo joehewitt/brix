@@ -1643,3 +1643,157 @@ Exception: Stub.roll does not take and give what the door of 'world' does: main 
         (print (call roll))
                ^^^^^^^^^^^
 ```
+
+### A ban on outside refuses a door of any effect, though the module where it is written does not import the one that declares it
+
+```brix compile-error
+(import ./schema)
+(blank)
+
+(main
+  (print (call parse-document))
+)
+
+(fn-do + parse-document Int (without outside)
+  (return (call load-schema))
+)
+```
+
+```brix file=schema.bx
+(import ./world)
+(blank)
+
+(fn-do + load-schema Int
+  (return (call probe))
+)
+```
+
+```brix file=world.bx
+(import /JaCore/tests.h)
+(blank)
+
+(effect + probe-world
+  (claim C:ctest4a)
+)
+
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
+```
+
+```output
+Exception: cannot reach a door of 'probe-world' under 'without outside': parse-document (without outside) → load-schema → (call probe)
+<schema.bx:5>
+      (return (call probe))
+              ^^^^^^^^^^^^
+```
+
+### A do block's ban on outside passes code that reaches no door, with no effect imported
+
+```brix
+(main
+  (let sum 0)
+  (do (without outside)
+    (for (in i (..< 0 4))
+      (+= sum i)
+    )
+  )
+  (print sum)
+)
+```
+
+```output
+6
+```
+
+### A ban on outside joins a restriction, and each is reported with the section that writes both
+
+```brix compile-error
+(import /BxCore/BxNumber.h)
+(blank)
+
+(main
+  (print (call outer 3))
+)
+
+(effect + probe-world)
+
+(fn-do + probe Int (door probe-world)
+  (return 1)
+)
+
+(fn-do + outer Int (without outside heap)
+  (param n Int)
+  (let text (call C:brixIntToString n 0))
+  (return (+ n (call probe)))
+)
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap, outside) → (call C:brixIntToString n 0)
+<no file:17>
+      (let text (call C:brixIntToString n 0))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Exception: cannot reach a door of 'probe-world' under 'without outside': outer (without heap, outside) → (call probe)
+<no file:18>
+      (return (+ n (call probe)))
+                   ^^^^^^^^^^^^
+```
+
+### No effect may be named outside
+
+```brix compile-error
+(effect + outside)
+
+(main
+  (print 1)
+)
+```
+
+```output
+Exception: No effect may be named 'outside', which after without stands for every effect
+<no file:2>
+    (effect + outside)
+    ^^^^^^^^^^^^^^^^^
+```
+
+### A ban on outside holds past a narrower ban the code reaches, however many effects the program declares
+
+```brix compile-error
+(main
+  (print (call run))
+)
+
+(effect + e1)
+(effect + e2)
+(effect + e3)
+(effect + e4)
+(effect + e5)
+(effect + e6)
+(effect + e7)
+(effect + e8)
+(effect + e9)
+(effect + e10)
+(effect + e11)
+(effect + e12)
+
+(fn-do + probe Int (door e1)
+  (return 1)
+)
+
+(fn-do + middle Int (without e2 e3 e4 e5)
+  (return (call probe))
+)
+
+(fn-do + run Int (without outside)
+  (return (call middle))
+)
+```
+
+```output
+Exception: cannot reach a door of 'e1' under 'without outside': run (without outside) → middle → (call probe)
+<no file:24>
+      (return (call probe))
+              ^^^^^^^^^^^^
+```

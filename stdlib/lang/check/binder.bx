@@ -282,6 +282,35 @@
     ; The effects a `without` section bans and a door names are effects its module sees.
     (for (in offset (..< 0 (. bans count)))
       (let name ([] (. tree atoms) (+ (. bans start) offset)))
+      (if (== (. name text) (call outside-name))
+        (if (> (. program effects count) (call most-effects))
+          (call (. bindings diagnostics append)
+            (block
+              (arg
+                (call Diagnostic
+                  (block
+                    (arg module)
+                    (arg id)
+                    (arg .stated)
+                    (arg
+                      (call (. program store-atom)
+                        (block
+                          (arg
+                            (paragraph
+                              (str "A program can ban at most " (call most-effects) " effects, and 'outside' would ban all " (. program effects count) " of its effects")
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+        (continue)
+      )
       (let found (call (. program effect-named) module name))
       (if (not found)
         (call (. bindings diagnostics append)
