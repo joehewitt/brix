@@ -494,6 +494,7 @@ static const uint8_t kTileFailureLimit = 3;
 static const int64_t kAheadTileKeepFrames = 120;
 
 static const int kAtlasSize = 1024;
+static const double kGlyphPenSteps = 1024;
 static const int kGlyphAtlasPages = 4;
 static const int kImageAtlasPages = 2;
 static const uint64_t kFrameUploadCap = 256 * 1024;
@@ -5709,6 +5710,10 @@ static double glyphLadderScale(double scale) {
     return exp2(ceil(log2(scale) * kGlyphLadderSteps - 1e-6) / kGlyphLadderSteps);
 }
 
+static double glyphPenSnap(double pen) {
+    return round(pen * kGlyphPenSteps) / kGlyphPenSteps;
+}
+
 static int glyphSubpixel(double fraction, double emPixels) {
     int steps = emPixels < kGlyphHalfPixelEm ? 4 : emPixels < kGlyphWholePixelEm ? 2 : 1;
     return (static_cast<int>(floor(fraction * steps)) * (4 / steps)) & 3;
@@ -5812,7 +5817,7 @@ static void expandGlyphRun(
         for (uint32_t offset = 0; offset < line.glyphCount; ++offset) {
             const RunGlyph& glyph = run.glyphs[line.glyphStart + offset];
             CTFontRef font = run.fonts[glyph.fontIndex];
-            double pen = (blockX + (offsetX + glyph.x) * zoom) * renderer->scale;
+            double pen = glyphPenSnap((blockX + (offsetX + glyph.x) * zoom) * renderer->scale);
             double penFloor = floor(pen);
             int subpixel = glyphSubpixel(pen - penFloor, CTFontGetSize(font) * rasterScale);
             size_t slot = static_cast<size_t>(line.glyphStart + offset) * 4 + static_cast<size_t>(subpixel);
