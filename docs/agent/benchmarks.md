@@ -127,13 +127,17 @@ they cannot show these. `/gui/bench/fixtures/window-frame-fixture` holds the sha
   coming, such as a tick subscription.
 - **Input.** Scripted pointer input goes through the native pointer callback, stamped with
   `brixGuiEventClockSeconds`, the clock of real event timestamps and Metal presentation times, so
-  it counts as `input` and the scroll resampler treats it as real. Latency is a best case, since
-  the input always arrives just after a frame.
+  it counts as `input` and the scroll resampler treats it as real. The log sends scrolls, moves,
+  presses, drags, releases and magnifications. Latency is a best case, since the input always
+  arrives just after a frame.
 - **Animation steps.** Work in an `(on tick frames)` handler runs inside the frame's `tick` part.
   A benchmark that animates there may also time it with `timed`, reported as `step`, to tell its
   own work from the clock's.
 - **Rates.** `refresh-us` records the display's refresh interval; compare runs only at equal
   rates.
+- **Segments.** The `board-pyramid` profile runs Page Board's tile pyramid script,
+  `window-board-pyramid`: it pans, zooms, rests, jumps and fits, and reports encode and GPU time
+  for each part, and how long each still part takes to stop committing frames.
 
 ## Run Time
 
