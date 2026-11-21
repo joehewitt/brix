@@ -49,7 +49,7 @@
   (prop _ gpu-frames _ (= 0))
   (prop _ gpu-nanos _ (= 0))
   (prop _ draw-calls _ (= 0))
-  (depends invalidate-paint page-count)
+  (depends rebuild-board page-count)
   (depends start-tour is-touring)
   (prop _ running _
     (machine
@@ -100,6 +100,16 @@
     (= is-touring false)
     (call (. camera fit))
   )
+  (fn-do + did-layout _
+    (call (. super did-layout))
+    (if (call (. camera place) (. bounds size) (call board-size page-count))
+      (call invalidate-content-transform)
+    )
+  )
+  (fn-do _ rebuild-board _
+    (let ignored (call (. camera place) (. bounds size) (call board-size page-count)))
+    (call invalidate-paint)
+  )
   (fn-do _ start-tour _
     (if is-touring
       (= tour-clock (* tour-period 0.5))
@@ -107,10 +117,9 @@
   )
   (fn-do _ advance _
     (param seconds F64)
-    (let placed (. camera is-placed))
-    (call (. camera place) (. bounds size) (call board-size page-count))
+    (let placed (call (. camera place) (. bounds size) (call board-size page-count)))
     (let moved (call move-camera seconds))
-    (if (or moved (not placed))
+    (if (or moved placed)
       (call invalidate-content-transform)
     )
     (call sample seconds moved)

@@ -2345,6 +2345,77 @@ brixGraphicsFillGradient(
     CGGradientRelease(gradient);
 }
 
+extern "C" void
+brixGraphicsFillPathGradient(
+    void* ptr,
+    int32_t kind,
+    const double* geometry,
+    const double* components,
+    const double* locations,
+    int64_t stopCount,
+    int32_t fillRule
+) {
+    BxGraphicsCanvas* canvas = getCanvas(ptr);
+    if (!canvas || !canvas->context || !geometry || !components || !locations ||
+        stopCount < 2 || kind < 1 || kind > 3) {
+        return;
+    }
+    CGContextRef context = canvas->context;
+    if (CGContextIsPathEmpty(context)) {
+        return;
+    }
+    CGGradientRef gradient = CGGradientCreateWithColorComponents(
+        getSRGBColorSpace(),
+        components,
+        locations,
+        static_cast<size_t>(stopCount)
+    );
+    if (!gradient) {
+        return;
+    }
+    CGPathRef path = CGContextCopyPath(context);
+    invalidateUserRect(canvas, CGPathGetPathBoundingBox(path));
+    CGContextSaveGState(context);
+    if (fillRule == 1) {
+        CGContextEOClip(context);
+    } else {
+        CGContextClip(context);
+    }
+    const CGGradientDrawingOptions extend =
+        kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation;
+    if (kind == 1) {
+        CGContextDrawLinearGradient(
+            context,
+            gradient,
+            CGPointMake(geometry[0], geometry[1]),
+            CGPointMake(geometry[3], geometry[4]),
+            extend
+        );
+    } else if (kind == 2) {
+        CGContextDrawRadialGradient(
+            context,
+            gradient,
+            CGPointMake(geometry[0], geometry[1]),
+            geometry[2],
+            CGPointMake(geometry[3], geometry[4]),
+            geometry[5],
+            extend
+        );
+    } else {
+        CGContextDrawConicGradient(
+            context,
+            gradient,
+            CGPointMake(geometry[0], geometry[1]),
+            geometry[2]
+        );
+    }
+    CGContextRestoreGState(context);
+    CGContextBeginPath(context);
+    CGContextAddPath(context, path);
+    CGPathRelease(path);
+    CGGradientRelease(gradient);
+}
+
 
 struct BxGraphicsShaderArea {
     double left;

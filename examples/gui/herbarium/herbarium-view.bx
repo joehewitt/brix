@@ -194,8 +194,15 @@
     (let include-static (not split-layers))
     (= dynamic-counts (call paint-herbarium-layer assets table canvas field clock (. gusts gusts) motion-mode paint-tier include-static true))
   )
+  (fn-do + did-layout _
+    (call (. super did-layout))
+    (if (call (. camera place) (. bounds size) (. field extent))
+      (call sync-transforms)
+    )
+  )
   (fn-do _ rebuild-scene _
     (= field (call HerbariumField specimen-count animated-share))
+    (let ignored (call (. camera place) (. bounds size) (. field extent)))
     (call invalidate-all-layers)
   )
   (fn-do _ invalidate-all-layers _
@@ -213,10 +220,9 @@
   )
   (fn-do _ advance _
     (param seconds F64)
-    (let placed (. camera is-placed))
-    (call (. camera place) (. bounds size) (. field extent))
+    (let placed (call (. camera place) (. bounds size) (. field extent)))
     (let moved (call move-camera seconds))
-    (if (or moved (not placed))
+    (if (or moved placed)
       (call sync-transforms)
     )
     (let animating (> animated-share 0))

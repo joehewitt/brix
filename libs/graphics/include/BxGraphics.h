@@ -384,6 +384,15 @@ extern "C" void brixGraphicsFillPathPaint(
     double alpha,
     int32_t fillRule
 );
+extern "C" void brixGraphicsFillPathGradient(
+    void* canvas,
+    int32_t kind,
+    const double* geometry,
+    const double* components,
+    const double* locations,
+    int64_t stopCount,
+    int32_t fillRule
+);
 
 typedef struct BxGraphicsDab {
     float x;

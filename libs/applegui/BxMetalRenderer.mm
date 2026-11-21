@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -22,6 +23,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -236,6 +238,7 @@ struct PathOp {
     uint32_t slot;
     uint32_t serial;
     uint32_t span;
+    uint32_t count;
     float contentMask[4];
 };
 
@@ -754,6 +757,139 @@ constexpr double fillMiterLimit = 10;
 constexpr double fillClosingSnap = 1e-6;
 constexpr double fillDashLimit = 16384;
 
+template <typename T>
+struct PodBuffer {
+    static_assert(std::is_trivially_copyable<T>::value, "PodBuffer requires trivially copyable T");
+    T* ptr = nullptr;
+    size_t count = 0;
+    size_t cap = 0;
+
+    PodBuffer() = default;
+    ~PodBuffer() {
+        std::free(ptr);
+    }
+    PodBuffer(const PodBuffer& other) {
+        if (other.count) {
+            ptr = static_cast<T*>(std::malloc(other.count * sizeof(T)));
+            if (ptr) {
+                std::memcpy(ptr, other.ptr, other.count * sizeof(T));
+                count = other.count;
+                cap = other.count;
+            }
+        }
+    }
+    PodBuffer& operator=(const PodBuffer& other) {
+        if (this != &other) {
+            if (other.count > cap) {
+                std::free(ptr);
+                ptr = other.count ? static_cast<T*>(std::malloc(other.count * sizeof(T))) : nullptr;
+                cap = ptr ? other.count : 0;
+            }
+            if (ptr && other.count) {
+                std::memcpy(ptr, other.ptr, other.count * sizeof(T));
+                count = other.count;
+            } else {
+                count = 0;
+            }
+        }
+        return *this;
+    }
+    PodBuffer(PodBuffer&& other) noexcept : ptr(other.ptr), count(other.count), cap(other.cap) {
+        other.ptr = nullptr;
+        other.count = 0;
+        other.cap = 0;
+    }
+    PodBuffer& operator=(PodBuffer&& other) noexcept {
+        if (this != &other) {
+            std::free(ptr);
+            ptr = other.ptr;
+            count = other.count;
+            cap = other.cap;
+            other.ptr = nullptr;
+            other.count = 0;
+            other.cap = 0;
+        }
+        return *this;
+    }
+
+    T* data() { return ptr; }
+    const T* data() const { return ptr; }
+    size_t size() const { return count; }
+    size_t capacity() const { return cap; }
+    bool empty() const { return count == 0; }
+    T* begin() { return ptr; }
+    T* end() { return ptr + count; }
+    const T* begin() const { return ptr; }
+    const T* end() const { return ptr + count; }
+    T& operator[](size_t index) { return ptr[index]; }
+    const T& operator[](size_t index) const { return ptr[index]; }
+    T& back() { return ptr[count - 1]; }
+    const T& back() const { return ptr[count - 1]; }
+
+    void clear() { count = 0; }
+    void setSize(size_t n) { count = n; }
+    void swap(PodBuffer& other) noexcept {
+        std::swap(ptr, other.ptr);
+        std::swap(count, other.count);
+        std::swap(cap, other.cap);
+    }
+    void reserve(size_t required) {
+        if (required <= cap) {
+            return;
+        }
+        size_t next = cap ? cap * 2 : 64;
+        while (next < required) {
+            next *= 2;
+        }
+        T* replacement = static_cast<T*>(std::malloc(next * sizeof(T)));
+        if (!replacement) {
+            return;
+        }
+        if (count && ptr) {
+            std::memcpy(replacement, ptr, count * sizeof(T));
+        }
+        std::free(ptr);
+        ptr = replacement;
+        cap = next;
+    }
+    void resizeUninit(size_t n) {
+        if (n > cap) {
+            reserve(n);
+        }
+        count = n;
+    }
+    T* growUninit(size_t n) {
+        size_t start = count;
+        if (start + n > cap) {
+            reserve(start + n);
+        }
+        count = start + n;
+        return ptr + start;
+    }
+    void push_back(const T& value) {
+        if (count == cap) {
+            reserve(cap ? cap * 2 : 64);
+        }
+        ptr[count++] = value;
+    }
+    void assignFrom(const T* src, size_t n) {
+        if (n > cap) {
+            reserve(n);
+        }
+        if (n) {
+            std::memcpy(ptr, src, n * sizeof(T));
+        }
+        count = n;
+    }
+    void appendFrom(const T* src, size_t n) {
+        if (!n) {
+            return;
+        }
+        T* dst = growUninit(n);
+        std::memcpy(dst, src, n * sizeof(T));
+    }
+};
+
 struct FillSegmentGPU {
     float p[8];
     uint32_t kind;
@@ -853,20 +989,7 @@ struct DabCacheEntry {
     int64_t lastUsed = 0;
 };
 
-struct FillSpanRecord {
-    uint32_t path = 0;
-    uint32_t paletteIndex = 0;
-    uint8_t role = 2;
-    uint8_t fillRule = 0;
-    uint8_t strokeRole = 2;
-    uint8_t strokeCap = FillStrokeInherit;
-    uint8_t strokeJoin = FillStrokeInherit;
-    uint8_t strokeAlignment = FillAlignCenter;
-    uint32_t strokePaletteIndex = 0;
-    uint32_t paint = 0;
-    double strokeWidth = -1;
-    double dash = 0;
-    bool shadow = false;
+struct FillSpanExtra {
     double shadowOffset[2] = {0, 0};
     double shadowBlur = 0;
     uint32_t brush = 0;
@@ -874,11 +997,31 @@ struct FillSpanRecord {
     DabCacheEntry* dabs = nullptr;
 };
 
+struct FillSpanRecord {
+    uint32_t path = 0;
+    uint32_t paletteIndex = 0;
+    uint32_t strokePaletteIndex = 0;
+    uint32_t paint = 0;
+    uint32_t extra = UINT32_MAX;
+    uint8_t role = 2;
+    uint8_t fillRule = 0;
+    uint8_t strokeRole = 2;
+    uint8_t strokeCap = FillStrokeInherit;
+    uint8_t strokeJoin = FillStrokeInherit;
+    uint8_t strokeAlignment = FillAlignCenter;
+    uint8_t shadow = 0;
+    uint8_t hasBrush = 0;
+    double strokeWidth = -1;
+    double dash = 0;
+};
+
 struct FillGeometryRecord {
     uint32_t generation = 0;
     bool resident = false;
-    std::vector<FillPathRecord> paths;
-    std::vector<FillSpanRecord> spans;
+    bool hasBrushes = false;
+    PodBuffer<FillPathRecord> paths;
+    PodBuffer<FillSpanRecord> spans;
+    std::vector<FillSpanExtra> extras;
 };
 
 struct ChunkPathSet {
@@ -886,12 +1029,15 @@ struct ChunkPathSet {
     uint32_t generation = 0;
     uint32_t serial = 0;
     FillGeometryRecord geometry;
-    std::vector<float> palette;
-    std::vector<BxGuiMetalGradient> gradients;
-    std::vector<FillStopGPU> stops;
+    PodBuffer<float> palette;
+    PodBuffer<BxGuiMetalGradient> gradients;
+    PodBuffer<uint8_t> gradientTranslucent;
+    PodBuffer<FillStopGPU> stops;
     std::vector<float> shaderArgs;
     std::vector<uint32_t> statePaths;
-    std::vector<uint32_t> spanItems;
+    PodBuffer<uint32_t> spanItems;
+    mutable uint64_t stopsExpandSerial = 0;
+    mutable uint32_t stopsBase = 0;
 };
 
 struct FillPendingSegment {
@@ -973,6 +1119,7 @@ struct FillBatchInfo {
     bool paints;
     bool blend;
     uint32_t shader;
+    bool mayHaveOpaque;
 };
 
 static const uint32_t kBatchRects = 8;
@@ -1111,6 +1258,8 @@ struct SurfacePipelines {
     id<MTLRenderPipelineState> pipelines[6] = {nil, nil, nil, nil, nil, nil};
     id<MTLRenderPipelineState> blendPipelines[6] = {nil, nil, nil, nil, nil, nil};
     id<MTLRenderPipelineState> fillRender = nil;
+    id<MTLRenderPipelineState> fillRenderNoClips = nil;
+    id<MTLRenderPipelineState> fillRenderPlain = nil;
     id<MTLRenderPipelineState> fillSolid = nil;
     id<MTLRenderPipelineState> fillBlend = nil;
     id<MTLRenderPipelineState> shadowBlurPipelines[5] = {nil, nil, nil, nil, nil};
@@ -1303,8 +1452,12 @@ struct MetalRenderer {
     uint32_t chunkPathSerial = 0;
     std::vector<uint8_t> chunkPathVerbs;
     std::vector<double> chunkPathCoords;
-    std::vector<FillSegmentGPU> fillSegments;
+    PodBuffer<FillSegmentGPU> fillSegments;
+    PodBuffer<FillSegmentGPU> fillCompactScratch;
     id<MTLBuffer> fillSegmentBuffer = nil;
+    id<MTLBuffer> fillSegmentPool[3] = {nil, nil, nil};
+    uint32_t fillSegmentPoolIndex = 0;
+    int64_t fillSegmentPoolRotatedFrame = -1;
     size_t fillSegmentsUploaded = 0;
     size_t fillDeadSegments = 0;
     FillGeometryRecord fillBuild;
@@ -1315,9 +1468,11 @@ struct MetalRenderer {
     double fillSubpath[2] = {0, 0};
     bool fillHasSubpath = false;
     size_t fillSubpathFirst = 0;
-    std::vector<FrameFillDraw> fillDraws;
-    std::vector<FillPaintGPU> fillPaints;
-    std::vector<FillStopGPU> fillStops;
+    PodBuffer<FillDrawGPU> fillDraws;
+    bool fillDrawsHaveSkipped = false;
+    uint64_t expandSerial = 0;
+    PodBuffer<FillPaintGPU> fillPaints;
+    PodBuffer<FillStopGPU> fillStops;
     std::vector<FillBatchInfo> fillBatches;
     std::vector<DabGPU> brushDabs;
     std::vector<DabDrawGPU> brushDraws;
@@ -1344,6 +1499,7 @@ struct MetalRenderer {
     id<MTLBuffer> fillGroupSums = nil;
     id<MTLBuffer> fillGroupOpaque = nil;
     id<MTLBuffer> fillTileKinds = nil;
+    id<MTLBuffer> fillTileBounds = nil;
     id<MTLBuffer> fillOccluders = nil;
     id<MTLBuffer> fillVisibleTiles = nil;
     id<MTLBuffer> fillOpaqueTiles = nil;
@@ -1379,6 +1535,23 @@ template <typename Value>
 static void ensureVectorCapacity(
     MetalRenderer* renderer,
     std::vector<Value>& values,
+    size_t required
+) {
+    if (required <= values.capacity()) {
+        return;
+    }
+    size_t capacity = values.capacity() ? values.capacity() * 2 : 64;
+    while (capacity < required) {
+        capacity *= 2;
+    }
+    values.reserve(capacity);
+    countAllocation(renderer);
+}
+
+template <typename Value>
+static void ensureVectorCapacity(
+    MetalRenderer* renderer,
+    PodBuffer<Value>& values,
     size_t required
 ) {
     if (required <= values.capacity()) {
@@ -2344,11 +2517,15 @@ static void emitBackdrop(thread FillContext& context, int column, int row, int d
 
 template <bool Write>
 static void walkLine(thread FillContext& context, float2 from, float2 to) {
+    int cx = int(floor(from.x * 0.0625)) - context.gridX;
+    int cy = int(floor(from.y * 0.0625)) - context.gridY;
+    int ex = int(floor(to.x * 0.0625)) - context.gridX;
+    int ey = int(floor(to.y * 0.0625)) - context.gridY;
+    if (cx == ex && cy == ey) {
+        emitPiece<Write>(context, cx, cy, from, to);
+        return;
+    }
     float2 delta = to - from;
-    int cx = int(floor(from.x / kTile)) - context.gridX;
-    int cy = int(floor(from.y / kTile)) - context.gridY;
-    int ex = int(floor(to.x / kTile)) - context.gridX;
-    int ey = int(floor(to.y / kTile)) - context.gridY;
     int stepX = ex > cx ? 1 : (ex < cx ? -1 : 0);
     int stepY = ey > cy ? 1 : (ey < cy ? -1 : 0);
     int remainingX = abs(ex - cx);
@@ -2399,6 +2576,12 @@ static void clipLine(thread FillContext& context, float2 low, float2 high, float
     if ((from.x >= gridHigh.x && to.x >= gridHigh.x) ||
         (from.y < gridLow.y && to.y < gridLow.y) ||
         (from.y >= gridHigh.y && to.y >= gridHigh.y)) {
+        return;
+    }
+    if (all(from >= low) && all(from <= high) && all(to >= low) && all(to <= high)) {
+        if (any(from != to)) {
+            walkLine<Write>(context, from, to);
+        }
         return;
     }
     float2 delta = to - from;
@@ -2560,6 +2743,10 @@ static void strokeCap(
     float deviceRadius,
     float tolerance
 ) {
+    if (deviceRadius <= 0.35) {
+        strokeLine<Write>(context, emitter, from, to);
+        return;
+    }
     if (cap == kCapRound) {
         strokeArc<Write>(context, emitter, center, from, to, -M_PI_F, deviceRadius, tolerance);
     } else if (cap == kCapSquare) {
@@ -2622,7 +2809,7 @@ static void strokeJoin(
     float2 rightFrom = strokeOffset(center, outgoing, -1.0, halfWidth);
     float2 rightTo = strokeOffset(center, incoming, -1.0, halfWidth);
     float turn = incoming.x * outgoing.y - incoming.y * outgoing.x;
-    if (abs(turn) < 1e-5 && dot(incoming, outgoing) > 0.0) {
+    if (deviceRadius <= 0.35 || (abs(turn) < 1e-5 && dot(incoming, outgoing) > 0.0)) {
         strokeLine<Write>(context, emitter, leftFrom, leftTo);
         strokeLine<Write>(context, emitter, rightFrom, rightTo);
         return;
@@ -2802,7 +2989,11 @@ static uint strokeSegment(
     uint join = (draw.strokeStyle >> 4) & 15u;
     float deviceScale = sqrt(draw.a * draw.a + draw.b * draw.b + draw.c * draw.c + draw.d * draw.d);
     float deviceRadius = halfWidth * deviceScale;
+    float trueRadius = halfWidth * max(length(float2(draw.a, draw.b)), length(float2(draw.c, draw.d)));
     float tolerance = params.tolerance;
+    float strokeTolerance = trueRadius < 0.35
+        ? clamp(tolerance / max(2.0 * trueRadius, 0.25), tolerance, 0.2)
+        : tolerance;
     float2 startTangent = strokeStartTangent(segment);
     float2 endTangent = strokeEndTangent(segment);
     uint count = 1;
@@ -2812,12 +3003,13 @@ static uint strokeSegment(
         float2 d2 = transformPoint(draw, segment.p2);
         float2 d3 = transformPoint(draw, segment.p3);
         float bend = max(length(d0 - 2.0 * d1 + d2), length(d1 - 2.0 * d2 + d3));
-        float centerSteps = ceil(sqrt(1.5 * bend / tolerance));
+        float centerFactor = trueRadius < 0.35 ? 0.75 : 1.5;
+        float centerSteps = ceil(sqrt(centerFactor * bend / strokeTolerance));
         float turning = turnBetween(d1 - d0, d2 - d1) + turnBetween(d2 - d1, d3 - d2);
         if (dot(d1 - d0, d1 - d0) < 1e-12 || dot(d3 - d2, d3 - d2) < 1e-12) {
             turning = max(turning, turnBetween(d2 - d0, d3 - d1));
         }
-        float offsetSteps = ceil(turning / sqrt(4.0 * tolerance / max(deviceRadius, tolerance)));
+        float offsetSteps = ceil(turning / sqrt(4.0 * strokeTolerance / max(trueRadius, strokeTolerance)));
         float steps = max(centerSteps, offsetSteps);
         count = isfinite(steps) ? uint(clamp(steps, 1.0, 1024.0)) : 1u;
     }
@@ -2838,17 +3030,39 @@ static uint strokeSegment(
         );
         return emitter.lines;
     }
-    float2 previous = strokeSample(segment, 0, count, startTangent, endTangent, 1.0, halfWidth);
+    float2 prevPos = strokeOffset(segment.p0, startTangent, 1.0, halfWidth);
+    float2 prevNeg = strokeOffset(segment.p0, startTangent, -1.0, halfWidth);
+    float2 dPrevPos = transformPoint(draw, prevPos);
+    float2 dPrevNeg = transformPoint(draw, prevNeg);
+    float2 e0 = segment.p1 - segment.p0;
+    float2 e1 = segment.p2 - segment.p1;
+    float2 e2 = segment.p3 - segment.p2;
+    float invCount = 1.0 / float(count);
     for (uint i = 1; i <= count; ++i) {
-        float2 point = strokeSample(segment, i, count, startTangent, endTangent, 1.0, halfWidth);
-        strokeLine<Write>(context, emitter, previous, point);
-        previous = point;
-    }
-    previous = strokeSample(segment, count, count, startTangent, endTangent, -1.0, halfWidth);
-    for (uint i = count; i > 0; --i) {
-        float2 point = strokeSample(segment, i - 1, count, startTangent, endTangent, -1.0, halfWidth);
-        strokeLine<Write>(context, emitter, previous, point);
-        previous = point;
+        float2 center;
+        float2 tangent;
+        if (i == count) {
+            center = segment.p3;
+            tangent = endTangent;
+        } else {
+            float t = float(i) * invCount;
+            float u = 1.0 - t;
+            float u2 = u * u;
+            float t2 = t * t;
+            float ut = u * t;
+            center = (u2 * u) * segment.p0 + (3.0 * u2 * t) * segment.p1 +
+                (3.0 * ut * t) * segment.p2 + (t2 * t) * segment.p3;
+            float2 derivative = (3.0 * u2) * e0 + (6.0 * ut) * e1 + (3.0 * t2) * e2;
+            tangent = strokeDirection(derivative, startTangent);
+        }
+        float2 offset = strokeNormal(tangent) * halfWidth;
+        float2 dCurPos = transformPoint(draw, center + offset);
+        float2 dCurNeg = transformPoint(draw, center - offset);
+        clipLine<Write>(context, low, high, dPrevPos, dCurPos);
+        clipLine<Write>(context, low, high, dCurNeg, dPrevNeg);
+        emitter.lines += 2;
+        dPrevPos = dCurPos;
+        dPrevNeg = dCurNeg;
     }
     if ((kind & kSegmentStart) != 0 && (kind & kSegmentClosed) == 0) {
         strokeCap<Write>(
@@ -2879,7 +3093,7 @@ static uint strokeSegment(
 }
 
 template <bool Write>
-static void binSegment(
+static uint binSegment(
     constant FillParams& params,
     device const FillDraw* draws,
     device const uint* segmentBases,
@@ -2900,7 +3114,7 @@ static void binSegment(
     float2 gridLow = low + 1.0;
     float2 gridHigh = high - 1.0;
     if (draw.halfWidth > 0.0) {
-        uint lines = strokeSegment<Write>(
+        return strokeSegment<Write>(
             params,
             draw,
             segments,
@@ -2909,26 +3123,19 @@ static void binSegment(
             low,
             high
         );
-        if (!Write) {
-            atomic_fetch_add_explicit(&context.stats[2], lines, memory_order_relaxed);
-        }
-        return;
     }
     float2 p0 = transformPoint(draw, segment.p0);
     float2 p3 = transformPoint(draw, segment.p3);
     if ((segment.kind & kSegmentKindMask) == 0) {
         clipLine<Write>(context, low, high, p0, p3);
-        if (!Write) {
-            atomic_fetch_add_explicit(&context.stats[2], 1u, memory_order_relaxed);
-        }
-        return;
+        return 1u;
     }
     float2 p1 = transformPoint(draw, segment.p1);
     float2 p2 = transformPoint(draw, segment.p2);
     float2 lowest = min(min(p0, p1), min(p2, p3));
     float2 highest = max(max(p0, p1), max(p2, p3));
     if (lowest.x >= gridHigh.x || highest.y < gridLow.y || lowest.y >= gridHigh.y) {
-        return;
+        return 0u;
     }
     uint count = 1;
     if (highest.x < gridLow.x) {
@@ -2939,9 +3146,10 @@ static void binSegment(
         float bend = max(length(bend0), length(bend1));
         float steps = ceil(sqrt(0.75 * bend / params.tolerance));
         count = isfinite(steps) ? uint(clamp(steps, 1.0, 1024.0)) : 1u;
+        float invCount = 1.0 / float(count);
         float2 previous = p0;
         for (uint i = 1; i <= count; ++i) {
-            float t = float(i) / float(count);
+            float t = float(i) * invCount;
             float u = 1.0 - t;
             float2 point = i == count ? p3 :
                 u * u * u * p0 + 3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t * p3;
@@ -2949,9 +3157,7 @@ static void binSegment(
             previous = point;
         }
     }
-    if (!Write) {
-        atomic_fetch_add_explicit(&context.stats[2], count, memory_order_relaxed);
-    }
+    return count;
 }
 )METAL";
 
@@ -2966,18 +3172,22 @@ kernel void brixGuiMetalFillCount(
     device atomic_uint* stats [[buffer(6)]],
     uint id [[thread_position_in_grid]]
 ) {
-    if (id >= params.segmentCount) {
-        return;
+    uint lines = 0u;
+    if (id < params.segmentCount) {
+        FillContext context;
+        context.pieceCapacity = params.pieceCapacity;
+        context.counts = counts;
+        context.backdrops = backdrops;
+        context.cursors = nullptr;
+        context.starts = nullptr;
+        context.pieces = nullptr;
+        context.stats = stats;
+        lines = binSegment<false>(params, draws, segmentBases, segments, context, id);
     }
-    FillContext context;
-    context.pieceCapacity = params.pieceCapacity;
-    context.counts = counts;
-    context.backdrops = backdrops;
-    context.cursors = nullptr;
-    context.starts = nullptr;
-    context.pieces = nullptr;
-    context.stats = stats;
-    binSegment<false>(params, draws, segmentBases, segments, context, id);
+    uint sgLines = simd_sum(lines);
+    if (simd_is_first() && sgLines > 0u) {
+        atomic_fetch_add_explicit(&stats[2], sgLines, memory_order_relaxed);
+    }
 }
 )METAL";
 
@@ -3296,13 +3506,45 @@ kernel void brixGuiMetalFillOcclude(
     device const int* backdrops [[buffer(4)]],
     device uchar* kinds [[buffer(5)]],
     device atomic_uint* occluders [[buffer(6)]],
+    device const uint* starts [[buffer(7)]],
+    device const float4* pieces [[buffer(8)]],
     device const CoverageClip* clips [[buffer(9)]],
+    device ushort* tileBounds [[buffer(10)]],
     uint id [[thread_position_in_grid]]
 ) {
     if (id >= params.tileCount) {
         return;
     }
     uint kind = tileClass(id, params, draws, tileDraws, counts, backdrops, clips);
+    ushort packedBounds = 0xff00u;
+    if (kind == 1u && backdrops[id] == 0) {
+        uint index = tileDraws[id];
+        FillDraw draw = draws[index];
+        uint start = min(starts[id], params.pieceCapacity);
+        uint count = min(counts[id], params.pieceCapacity - start);
+        if (count > 0u && (draw.fillRule >> 8u) <= 15u) {
+            float minX = kTile;
+            float minY = kTile;
+            float maxY = 0.0;
+            for (uint i = 0u; i < count; ++i) {
+                float4 piece = pieces[start + i];
+                minX = min(minX, min(piece.x, piece.z));
+                minY = min(minY, min(piece.y, piece.w));
+                maxY = max(maxY, max(piece.y, piece.w));
+            }
+            int ix0 = int(clamp(floor(minX), 0.0, kTile));
+            int iy0 = int(clamp(floor(minY), 0.0, kTile));
+            int iy1 = int(clamp(ceil(maxY), 0.0, kTile));
+            if (ix0 >= int(kTile) || iy0 >= iy1) {
+                kind = 0u;
+            } else {
+                packedBounds = ushort(
+                    uint(ix0) | (uint(iy0) << 4u) | (15u << 8u) | (uint(iy1 - 1) << 12u)
+                );
+            }
+        }
+    }
+    tileBounds[id] = packedBounds;
     kinds[id] = uchar(kind);
     if (kind != 3u) {
         return;
@@ -3523,7 +3765,8 @@ vertex FillVertexOut brixGuiMetalFillVertex(
     device const uint* tileDraws [[buffer(2)]],
     device const uint* tiles [[buffer(3)]],
     device const uint4* ranges [[buffer(4)]],
-    constant uint2& selection [[buffer(5)]]
+    constant uint2& selection [[buffer(5)]],
+    device const ushort* tileBounds [[buffer(6)]]
 ) {
     uint4 range = ranges[selection.x];
     uint index = selection.y != 0u ? range.w - 1u - instanceId : range.x + instanceId;
@@ -3532,8 +3775,11 @@ vertex FillVertexOut brixGuiMetalFillVertex(
     uint drawIndex = min(tileDraws[tile], params.drawCount - 1u);
     FillDraw draw = draws[drawIndex];
     float2 origin = tileOrigin(draw, tile);
-    float2 low = max(origin, draw.extent.xy);
-    float2 high = max(min(origin + kTile, draw.extent.zw), low);
+    uint packed = uint(tileBounds[tile]);
+    float2 tileLow = origin + float2(float(packed & 15u), float((packed >> 4u) & 15u));
+    float2 tileHigh = origin + float2(float(((packed >> 8u) & 15u) + 1u), float(((packed >> 12u) & 15u) + 1u));
+    float2 low = max(tileLow, draw.extent.xy);
+    float2 high = max(min(tileHigh, draw.extent.zw), low);
     float2 corner = float2(float(vertexId & 1u), float(vertexId >> 1u));
     float2 pixel = mix(low, high, corner);
     FillVertexOut out;
@@ -3563,26 +3809,37 @@ static float4 stopColor(float t, uint start, uint count, device const FillStop* 
     if (t <= first.offset) {
         return first.color;
     }
+    if (count == 2u) {
+        FillStop last = stops[start + 1u];
+        if (t >= last.offset) {
+            return last.color;
+        }
+        float span = last.offset - first.offset;
+        return span > 0.0 ? mix(first.color, last.color, (t - first.offset) / span) : last.color;
+    }
+    FillStop previous = first;
     for (uint i = 1u; i < count; ++i) {
         FillStop next = stops[start + i];
         if (t < next.offset) {
-            FillStop previous = stops[start + i - 1u];
             float span = next.offset - previous.offset;
             return span > 0.0 ? mix(previous.color, next.color, (t - previous.offset) / span) : next.color;
         }
+        previous = next;
     }
-    return stops[start + count - 1u].color;
+    return previous.color;
 }
 
-static float4 paintColor(
+static float4 paintColorWithDither(
     float2 point,
     uint paint,
     device const FillPaint* paints,
     device const FillStop* stops,
     texture2d<float> atlas0,
-    texture2d<float> atlas1
+    texture2d<float> atlas1,
+    thread bool& dithers
 ) {
     FillPaint record = paints[(paint & 0x7fffffffu) - 1u];
+    dithers = !kBrixExtendedOutput && record.kind >= 1u && record.kind <= 3u;
     float2 q = float2(
         record.a * point.x + record.c * point.y + record.tx,
         record.b * point.x + record.d * point.y + record.ty
@@ -3670,9 +3927,16 @@ static float4 paintColor(
     return stopColor(t, record.stopStart, record.stopCount, stops);
 }
 
-static bool paintDithers(uint paint, device const FillPaint* paints) {
-    uint kind = paints[(paint & 0x7fffffffu) - 1u].kind;
-    return !kBrixExtendedOutput && kind >= 1u && kind <= 3u;
+static float4 paintColor(
+    float2 point,
+    uint paint,
+    device const FillPaint* paints,
+    device const FillStop* stops,
+    texture2d<float> atlas0,
+    texture2d<float> atlas1
+) {
+    bool ignored = false;
+    return paintColorWithDither(point, paint, paints, stops, atlas0, atlas1, ignored);
 }
 
 static float ditherNoise(float2 point) {
@@ -3691,8 +3955,9 @@ fragment float4 brixGuiMetalFillSolidFragment(
         return float4(in.color.rgb, 1.0);
     }
     float2 point = in.position.xy + float2(params.originX, params.originY);
-    float3 rgb = in.color.rgb * paintColor(point, in.paint, paints, stops, atlas0, atlas1).rgb;
-    if (paintDithers(in.paint, paints)) {
+    bool dithers = false;
+    float3 rgb = in.color.rgb * paintColorWithDither(point, in.paint, paints, stops, atlas0, atlas1, dithers).rgb;
+    if (dithers) {
         rgb += ditherNoise(point) / 255.0;
     }
     return float4(rgb, 1.0);
@@ -3702,16 +3967,21 @@ static float rightArea(float u) {
     return u <= 0.0 ? u : (u >= 1.0 ? 0.5 : u - 0.5 * u * u);
 }
 
-static float pieceCoverage(float4 piece, float px, float py) {
-    float y0 = clamp(piece.y, py, py + 1.0);
-    float y1 = clamp(piece.w, py, py + 1.0);
-    float dy = y1 - y0;
-    if (dy == 0.0) {
-        return 0.0;
-    }
+static float pieceCoverageInterior(float4 piece, float px, float y0, float y1, float dy) {
     float slope = (piece.z - piece.x) / (piece.w - piece.y);
     float u0 = piece.x + (y0 - piece.y) * slope - px;
     float u1 = piece.x + (y1 - piece.y) * slope - px;
+    float lo = min(u0, u1);
+    float hi = max(u0, u1);
+    if (hi <= 0.0) {
+        return dy;
+    }
+    if (lo >= 1.0) {
+        return 0.0;
+    }
+    if (lo >= 0.0 && hi <= 1.0) {
+        return dy * (1.0 - 0.5 * (u0 + u1));
+    }
     float span = u1 - u0;
     float average = abs(span) < 1e-5 ?
         clamp(1.0 - 0.5 * (u0 + u1), 0.0, 1.0) :
@@ -3719,20 +3989,8 @@ static float pieceCoverage(float4 piece, float px, float py) {
     return dy * average;
 }
 
-static bool pieceTouches(float4 piece, float2 local) {
-    return max(piece.y, piece.w) > local.y && min(piece.y, piece.w) < local.y + 1.0 &&
-        min(piece.x, piece.z) < local.x + 1.0;
-}
-
-static bool pieceSpans(float4 piece, float2 local) {
-    return max(piece.x, piece.z) <= local.x && min(piece.y, piece.w) <= local.y &&
-        max(piece.y, piece.w) >= local.y + 1.0;
-}
-
-static float3 stackSpan(float3 stack, float4 piece, float2 local) {
-    float low = clamp(min(piece.y, piece.w) - local.y, 0.0, 1.0);
-    float high = clamp(max(piece.y, piece.w) - local.y, 0.0, 1.0);
-    return float3(stack.x + high - low, min(stack.y, low), max(stack.z, high));
+static float4 resolveCoverage4(float4 winding, uint fillRule) {
+    return fillRule == 0u ? min(abs(winding), 1.0) : abs(winding - 2.0 * round(winding * 0.5));
 }
 
 static bool stackOverlaps(float3 stack) {
@@ -3742,6 +4000,256 @@ static bool stackOverlaps(float3 stack) {
 constant uint kStackLimit = 8u;
 constant uint kStackRows = 16u;
 
+static float stackedCoverageFast(
+    uint fillRule,
+    float baseLevel,
+    float2 local,
+    device const float4* pieces,
+    uint start,
+    ulong leftMask,
+    ulong insideMask,
+    uint insideCount,
+    float touchedLow,
+    float touchedHigh
+) {
+    constexpr float invRows = 1.0 / float(kStackRows);
+    constexpr float fRows = float(kStackRows);
+    float4 lv0 = float4(baseLevel);
+    float4 lv1 = float4(baseLevel);
+    float4 lv2 = float4(baseLevel);
+    float4 lv3 = float4(baseLevel);
+    if (leftMask != 0ul) {
+        constexpr float4 baseR = float4(0.0, 1.0, 2.0, 3.0) * invRows;
+        ulong m = leftMask;
+        while (m != 0ul) {
+            uint idx = uint(ctz(m));
+            m &= m - 1ul;
+            float4 p = pieces[start + idx];
+            float lo = min(p.y, p.w) - local.y;
+            float hi = max(p.y, p.w) - local.y;
+            float sgn = p.w > p.y ? fRows : -fRows;
+            lv0 += max(min(float4(hi), baseR + invRows) - max(float4(lo), baseR), 0.0) * sgn;
+            lv1 += max(min(float4(hi), baseR + (5.0 * invRows)) - max(float4(lo), baseR + (4.0 * invRows)), 0.0) * sgn;
+            lv2 += max(min(float4(hi), baseR + (9.0 * invRows)) - max(float4(lo), baseR + (8.0 * invRows)), 0.0) * sgn;
+            lv3 += max(min(float4(hi), baseR + (13.0 * invRows)) - max(float4(lo), baseR + (12.0 * invRows)), 0.0) * sgn;
+        }
+    }
+    if (insideCount == 0u) {
+        float4 s = resolveCoverage4(lv0, fillRule) + resolveCoverage4(lv1, fillRule) +
+            resolveCoverage4(lv2, fillRule) + resolveCoverage4(lv3, fillRule);
+        return dot(s, float4(invRows));
+    }
+    float4 pLo = float4(2.0);
+    float4 pHi = float4(2.0);
+    float4 pSlope = float4(0.0);
+    float4 pX0 = float4(2.0);
+    float4 pDir = float4(0.0);
+    ulong m = insideMask;
+    uint slot = 0u;
+    while (m != 0ul) {
+        uint idx = uint(ctz(m));
+        m &= m - 1ul;
+        float4 p = pieces[start + idx];
+        float lo = min(p.y, p.w) - local.y;
+        float hi = max(p.y, p.w) - local.y;
+        float slope = (p.z - p.x) / (p.w - p.y);
+        float x0 = p.x + (local.y - p.y) * slope - local.x;
+        float dir = p.w > p.y ? fRows : -fRows;
+        if (slot == 0u) { pLo.x = lo; pHi.x = hi; pSlope.x = slope; pX0.x = x0; pDir.x = dir; }
+        else if (slot == 1u) { pLo.y = lo; pHi.y = hi; pSlope.y = slope; pX0.y = x0; pDir.y = dir; }
+        else if (slot == 2u) { pLo.z = lo; pHi.z = hi; pSlope.z = slope; pX0.z = x0; pDir.z = dir; }
+        else { pLo.w = lo; pHi.w = hi; pSlope.w = slope; pX0.w = x0; pDir.w = dir; }
+        ++slot;
+    }
+    float baseCoverage = resolveCoverage(baseLevel, fillRule);
+    float coverage = 0.0;
+    uint firstRow = uint(clamp(floor(touchedLow * fRows), 0.0, fRows));
+    uint lastRow = uint(clamp(ceil(touchedHigh * fRows), 0.0, fRows));
+    if (firstRow > 0u) {
+        coverage += float(firstRow) * baseCoverage;
+    }
+    if (lastRow < kStackRows) {
+        coverage += float(kStackRows - lastRow) * baseCoverage;
+    }
+    for (uint row = firstRow; row < lastRow; ++row) {
+        float rowLow = float(row) * invRows;
+        float rowHigh = rowLow + invRows;
+        float level = leftMask == 0ul ? baseLevel :
+            (row < 4u ? lv0[row] : (row < 8u ? lv1[row - 4u] : (row < 12u ? lv2[row - 8u] : lv3[row - 12u])));
+        float4 low4 = max(pLo, rowLow);
+        float4 high4 = min(pHi, rowHigh);
+        float4 active = max(high4 - low4, 0.0);
+        float4 weight4 = active * pDir;
+        float4 mid4 = 0.5 * (low4 + high4);
+        float4 edge4 = pX0 + mid4 * pSlope;
+        bool4 hasSpan = active > 0.0;
+        bool4 onLeft = hasSpan & (edge4 <= 0.0);
+        bool4 inMid = hasSpan & (edge4 > 0.0) & (edge4 < 1.0);
+        level += dot(select(float4(0.0), weight4, onLeft), float4(1.0));
+        float4 e = select(float4(1.0), edge4, inMid);
+        float4 w = select(float4(0.0), weight4, inMid);
+        bool s0 = e.x > e.y; float te = select(e.x, e.y, s0); e.y = select(e.y, e.x, s0); e.x = te; float tw = select(w.x, w.y, s0); w.y = select(w.y, w.x, s0); w.x = tw;
+        bool s1 = e.z > e.w; te = select(e.z, e.w, s1); e.w = select(e.w, e.z, s1); e.z = te; tw = select(w.z, w.w, s1); w.w = select(w.w, w.z, s1); w.z = tw;
+        bool s2 = e.x > e.z; te = select(e.x, e.z, s2); e.z = select(e.z, e.x, s2); e.x = te; tw = select(w.x, w.z, s2); w.z = select(w.z, w.x, s2); w.x = tw;
+        bool s3 = e.y > e.w; te = select(e.y, e.w, s3); e.w = select(e.w, e.y, s3); e.y = te; tw = select(w.y, w.w, s3); w.w = select(w.w, w.y, s3); w.y = tw;
+        bool s4 = e.y > e.z; te = select(e.y, e.z, s4); e.z = select(e.z, e.y, s4); e.y = te; tw = select(w.y, w.z, s4); w.z = select(w.z, w.y, s4); w.y = tw;
+        float span = e.x * resolveCoverage(level, fillRule);
+        level += w.x;
+        span += (e.y - e.x) * resolveCoverage(level, fillRule);
+        level += w.y;
+        span += (e.z - e.y) * resolveCoverage(level, fillRule);
+        level += w.z;
+        span += (e.w - e.z) * resolveCoverage(level, fillRule);
+        level += w.w;
+        span += (1.0 - e.w) * resolveCoverage(level, fillRule);
+        coverage += span;
+    }
+    return coverage * invRows;
+}
+
+static float stackedCoverageEight(
+    uint fillRule,
+    float baseLevel,
+    float2 local,
+    device const float4* pieces,
+    uint start,
+    ulong leftMask,
+    ulong insideMask,
+    float touchedLow,
+    float touchedHigh
+) {
+    constexpr float invRows = 1.0 / float(kStackRows);
+    constexpr float fRows = float(kStackRows);
+    float4 lv0 = float4(baseLevel);
+    float4 lv1 = float4(baseLevel);
+    float4 lv2 = float4(baseLevel);
+    float4 lv3 = float4(baseLevel);
+    if (leftMask != 0ul) {
+        constexpr float4 baseR = float4(0.0, 1.0, 2.0, 3.0) * invRows;
+        ulong m = leftMask;
+        while (m != 0ul) {
+            uint idx = uint(ctz(m));
+            m &= m - 1ul;
+            float4 p = pieces[start + idx];
+            float lo = min(p.y, p.w) - local.y;
+            float hi = max(p.y, p.w) - local.y;
+            float sgn = p.w > p.y ? fRows : -fRows;
+            lv0 += max(min(float4(hi), baseR + invRows) - max(float4(lo), baseR), 0.0) * sgn;
+            lv1 += max(min(float4(hi), baseR + (5.0 * invRows)) - max(float4(lo), baseR + (4.0 * invRows)), 0.0) * sgn;
+            lv2 += max(min(float4(hi), baseR + (9.0 * invRows)) - max(float4(lo), baseR + (8.0 * invRows)), 0.0) * sgn;
+            lv3 += max(min(float4(hi), baseR + (13.0 * invRows)) - max(float4(lo), baseR + (12.0 * invRows)), 0.0) * sgn;
+        }
+    }
+    float4 pLo0 = float4(2.0), pHi0 = float4(2.0), pSlope0 = float4(0.0), pX00 = float4(2.0), pDir0 = float4(0.0);
+    float4 pLo1 = float4(2.0), pHi1 = float4(2.0), pSlope1 = float4(0.0), pX01 = float4(2.0), pDir1 = float4(0.0);
+    ulong m = insideMask;
+    uint slot = 0u;
+    while (m != 0ul) {
+        uint idx = uint(ctz(m));
+        m &= m - 1ul;
+        float4 p = pieces[start + idx];
+        float lo = min(p.y, p.w) - local.y;
+        float hi = max(p.y, p.w) - local.y;
+        float slope = (p.z - p.x) / (p.w - p.y);
+        float x0 = p.x + (local.y - p.y) * slope - local.x;
+        float dir = p.w > p.y ? fRows : -fRows;
+        switch (slot) {
+            case 0u: pLo0.x = lo; pHi0.x = hi; pSlope0.x = slope; pX00.x = x0; pDir0.x = dir; break;
+            case 1u: pLo0.y = lo; pHi0.y = hi; pSlope0.y = slope; pX00.y = x0; pDir0.y = dir; break;
+            case 2u: pLo0.z = lo; pHi0.z = hi; pSlope0.z = slope; pX00.z = x0; pDir0.z = dir; break;
+            case 3u: pLo0.w = lo; pHi0.w = hi; pSlope0.w = slope; pX00.w = x0; pDir0.w = dir; break;
+            case 4u: pLo1.x = lo; pHi1.x = hi; pSlope1.x = slope; pX01.x = x0; pDir1.x = dir; break;
+            case 5u: pLo1.y = lo; pHi1.y = hi; pSlope1.y = slope; pX01.y = x0; pDir1.y = dir; break;
+            case 6u: pLo1.z = lo; pHi1.z = hi; pSlope1.z = slope; pX01.z = x0; pDir1.z = dir; break;
+            default: pLo1.w = lo; pHi1.w = hi; pSlope1.w = slope; pX01.w = x0; pDir1.w = dir; break;
+        }
+        ++slot;
+    }
+    float baseCoverage = resolveCoverage(baseLevel, fillRule);
+    float coverage = 0.0;
+    uint firstRow = uint(clamp(floor(touchedLow * fRows), 0.0, fRows));
+    uint lastRow = uint(clamp(ceil(touchedHigh * fRows), 0.0, fRows));
+    if (firstRow > 0u) {
+        coverage += float(firstRow) * baseCoverage;
+    }
+    if (lastRow < kStackRows) {
+        coverage += float(kStackRows - lastRow) * baseCoverage;
+    }
+    for (uint row = firstRow; row < lastRow; ++row) {
+        float rowLow = float(row) * invRows;
+        float rowHigh = rowLow + invRows;
+        float level = leftMask == 0ul ? baseLevel :
+            (row < 4u ? lv0[row] : (row < 8u ? lv1[row - 4u] : (row < 12u ? lv2[row - 8u] : lv3[row - 12u])));
+        float4 low0 = max(pLo0, rowLow);
+        float4 high0 = min(pHi0, rowHigh);
+        float4 act0 = max(high0 - low0, 0.0);
+        float4 wt0 = act0 * pDir0;
+        float4 ed0 = pX00 + (0.5 * (low0 + high0)) * pSlope0;
+        bool4 hs0 = act0 > 0.0;
+        bool4 lt0 = hs0 & (ed0 <= 0.0);
+        bool4 md0 = hs0 & (ed0 > 0.0) & (ed0 < 1.0);
+        level += dot(select(float4(0.0), wt0, lt0), float4(1.0));
+        float4 e0 = select(float4(1.0), ed0, md0);
+        float4 w0 = select(float4(0.0), wt0, md0);
+
+        float4 low1 = max(pLo1, rowLow);
+        float4 high1 = min(pHi1, rowHigh);
+        float4 act1 = max(high1 - low1, 0.0);
+        float4 wt1 = act1 * pDir1;
+        float4 ed1 = pX01 + (0.5 * (low1 + high1)) * pSlope1;
+        bool4 hs1 = act1 > 0.0;
+        bool4 lt1 = hs1 & (ed1 <= 0.0);
+        bool4 md1 = hs1 & (ed1 > 0.0) & (ed1 < 1.0);
+        level += dot(select(float4(0.0), wt1, lt1), float4(1.0));
+        float4 e1 = select(float4(1.0), ed1, md1);
+        float4 w1 = select(float4(0.0), wt1, md1);
+
+        if (e0.x > e0.y) { float t = e0.x; e0.x = e0.y; e0.y = t; t = w0.x; w0.x = w0.y; w0.y = t; }
+        if (e0.z > e0.w) { float t = e0.z; e0.z = e0.w; e0.w = t; t = w0.z; w0.z = w0.w; w0.w = t; }
+        if (e1.x > e1.y) { float t = e1.x; e1.x = e1.y; e1.y = t; t = w1.x; w1.x = w1.y; w1.y = t; }
+        if (e1.z > e1.w) { float t = e1.z; e1.z = e1.w; e1.w = t; t = w1.z; w1.z = w1.w; w1.w = t; }
+        if (e0.x > e0.z) { float t = e0.x; e0.x = e0.z; e0.z = t; t = w0.x; w0.x = w0.z; w0.z = t; }
+        if (e0.y > e0.w) { float t = e0.y; e0.y = e0.w; e0.w = t; t = w0.y; w0.y = w0.w; w0.w = t; }
+        if (e1.x > e1.z) { float t = e1.x; e1.x = e1.z; e1.z = t; t = w1.x; w1.x = w1.z; w1.z = t; }
+        if (e1.y > e1.w) { float t = e1.y; e1.y = e1.w; e1.w = t; t = w1.y; w1.y = w1.w; w1.w = t; }
+        if (e0.y > e0.z) { float t = e0.y; e0.y = e0.z; e0.z = t; t = w0.y; w0.y = w0.z; w0.z = t; }
+        if (e1.y > e1.z) { float t = e1.y; e1.y = e1.z; e1.z = t; t = w1.y; w1.y = w1.z; w1.z = t; }
+
+        bool4 sw = e0 > e1;
+        float4 ne0 = select(e0, e1, sw);
+        float4 ne1 = select(e1, e0, sw);
+        float4 nw0 = select(w0, w1, sw);
+        float4 nw1 = select(w1, w0, sw);
+        e0 = ne0; e1 = ne1; w0 = nw0; w1 = nw1;
+
+        if (e0.z > e1.x) { float t = e0.z; e0.z = e1.x; e1.x = t; t = w0.z; w0.z = w1.x; w1.x = t; }
+        if (e0.w > e1.y) { float t = e0.w; e0.w = e1.y; e1.y = t; t = w0.w; w0.w = w1.y; w1.y = t; }
+        if (e0.y > e0.z) { float t = e0.y; e0.y = e0.z; e0.z = t; t = w0.y; w0.y = w0.z; w0.z = t; }
+        if (e0.w > e1.x) { float t = e0.w; e0.w = e1.x; e1.x = t; t = w0.w; w0.w = w1.x; w1.x = t; }
+        if (e1.y > e1.z) { float t = e1.y; e1.y = e1.z; e1.z = t; t = w1.y; w1.y = w1.z; w1.z = t; }
+
+        float span = e0.x * resolveCoverage(level, fillRule);
+        level += w0.x;
+        span += (e0.y - e0.x) * resolveCoverage(level, fillRule);
+        level += w0.y;
+        span += (e0.z - e0.y) * resolveCoverage(level, fillRule);
+        level += w0.z;
+        span += (e0.w - e0.z) * resolveCoverage(level, fillRule);
+        level += w0.w;
+        span += (e1.x - e0.w) * resolveCoverage(level, fillRule);
+        level += w1.x;
+        span += (e1.y - e1.x) * resolveCoverage(level, fillRule);
+        level += w1.y;
+        span += (e1.z - e1.y) * resolveCoverage(level, fillRule);
+        level += w1.z;
+        span += (e1.w - e1.z) * resolveCoverage(level, fillRule);
+        level += w1.w;
+        span += (1.0 - e1.w) * resolveCoverage(level, fillRule);
+        coverage += span;
+    }
+    return coverage * invRows;
+}
+
 static float stackedCoverage(
     uint fillRule,
     uint tile,
@@ -3749,14 +4257,27 @@ static float stackedCoverage(
     device const float4* pieces,
     uint start,
     uint count,
-    device const int* backdrops
+    device const int* backdrops,
+    float touchedLow,
+    float touchedHigh
 ) {
-    float rows = float(kStackRows);
+    constexpr float invRows = 1.0 / float(kStackRows);
+    constexpr float rows = float(kStackRows);
+    float baseLevel = float(backdrops[tile]);
+    float baseCoverage = resolveCoverage(baseLevel, fillRule);
     float coverage = 0.0;
-    for (uint row = 0; row < kStackRows; ++row) {
-        float top = local.y + float(row) / rows;
-        float bottom = top + 1.0 / rows;
-        float level = float(backdrops[tile]);
+    uint firstRow = uint(clamp(floor(touchedLow * rows), 0.0, rows));
+    uint lastRow = uint(clamp(ceil(touchedHigh * rows), 0.0, rows));
+    if (firstRow > 0u) {
+        coverage += float(firstRow) * baseCoverage;
+    }
+    if (lastRow < kStackRows) {
+        coverage += float(kStackRows - lastRow) * baseCoverage;
+    }
+    for (uint row = firstRow; row < lastRow; ++row) {
+        float top = local.y + float(row) * invRows;
+        float bottom = top + invRows;
+        float level = baseLevel;
         float edges[kStackLimit];
         float steps[kStackLimit];
         uint found = 0;
@@ -3768,6 +4289,10 @@ static float stackedCoverage(
                 continue;
             }
             float weight = (high - low) * rows * (piece.w > piece.y ? 1.0 : -1.0);
+            if (max(piece.x, piece.z) <= local.x) {
+                level += weight;
+                continue;
+            }
             float middle = 0.5 * (low + high);
             float edge = piece.x + (middle - piece.y) * (piece.z - piece.x) / (piece.w - piece.y) - local.x;
             if (edge <= 0.0) {
@@ -3775,8 +4300,14 @@ static float stackedCoverage(
             } else if (edge >= 1.0) {
                 continue;
             } else if (found < kStackLimit) {
-                edges[found] = edge;
-                steps[found] = weight;
+                uint pos = found;
+                while (pos > 0u && edges[pos - 1u] > edge) {
+                    edges[pos] = edges[pos - 1u];
+                    steps[pos] = steps[pos - 1u];
+                    --pos;
+                }
+                edges[pos] = edge;
+                steps[pos] = weight;
                 ++found;
             } else {
                 uint nearest = 0;
@@ -3788,30 +4319,18 @@ static float stackedCoverage(
                 steps[nearest] += weight;
             }
         }
-        float first = 1.0;
-        for (uint i = 0; i < found; ++i) {
-            first = min(first, edges[i]);
-        }
+        float first = found > 0u ? edges[0] : 1.0;
         float span = first * resolveCoverage(level, fillRule);
         for (uint i = 0; i < found; ++i) {
-            float reached = level;
-            float next = 1.0;
-            bool repeated = false;
-            for (uint j = 0; j < found; ++j) {
-                if (edges[j] <= edges[i]) {
-                    reached += steps[j];
-                    repeated = repeated || (j < i && edges[j] == edges[i]);
-                } else {
-                    next = min(next, edges[j]);
-                }
-            }
-            if (!repeated) {
-                span += (next - edges[i]) * resolveCoverage(reached, fillRule);
+            level += steps[i];
+            float next = i + 1u < found ? edges[i + 1u] : 1.0;
+            if (next > edges[i]) {
+                span += (next - edges[i]) * resolveCoverage(level, fillRule);
             }
         }
-        coverage += span / rows;
+        coverage += span;
     }
-    return coverage;
+    return coverage * invRows;
 }
 
 static float tileCoverage(
@@ -3824,30 +4343,92 @@ static float tileCoverage(
     device const int* backdrops,
     constant FillParams& params
 ) {
-    float winding = float(backdrops[tile]);
+    float baseLevel = float(backdrops[tile]);
+    float winding = baseLevel;
     uint start = min(starts[tile], params.pieceCapacity);
     uint count = min(counts[tile], params.pieceCapacity - start);
     float3 rising = float3(0.0, 1.0, 0.0);
     float3 falling = float3(0.0, 1.0, 0.0);
-    for (uint i = 0; i < count; ++i) {
+    ulong insideMask = 0ul;
+    ulong leftMask = 0ul;
+    uint insideCount = 0u;
+    bool overflowMask = false;
+    float touchedLow = 1.0;
+    float touchedHigh = 0.0;
+    for (uint i = 0u; i < count; ++i) {
         float4 piece = pieces[start + i];
-        if (!pieceTouches(piece, local)) {
+        float minY = min(piece.y, piece.w);
+        float maxY = max(piece.y, piece.w);
+        if (maxY <= local.y || minY >= local.y + 1.0 || min(piece.x, piece.z) >= local.x + 1.0) {
             continue;
         }
-        winding += pieceCoverage(piece, local.x, local.y);
-        if (piece.w == piece.y || pieceSpans(piece, local)) {
+        float y0 = clamp(piece.y, local.y, local.y + 1.0);
+        float y1 = clamp(piece.w, local.y, local.y + 1.0);
+        float dy = y1 - y0;
+        if (dy == 0.0) {
             continue;
         }
-        if (piece.w > piece.y) {
-            rising = stackSpan(rising, piece, local);
+        if (max(piece.x, piece.z) <= local.x) {
+            winding += dy;
+            if (minY <= local.y && maxY >= local.y + 1.0) {
+                baseLevel += piece.w > piece.y ? 1.0 : -1.0;
+                continue;
+            }
+            if (i < 64u) {
+                leftMask |= (1ul << i);
+            } else {
+                overflowMask = true;
+            }
         } else {
-            falling = stackSpan(falling, piece, local);
+            winding += pieceCoverageInterior(piece, local.x, y0, y1, dy);
+            if (i < 64u) {
+                insideMask |= (1ul << i);
+            } else {
+                overflowMask = true;
+            }
+            ++insideCount;
+        }
+        float low = min(y0, y1) - local.y;
+        float high = max(y0, y1) - local.y;
+        touchedLow = min(touchedLow, low);
+        touchedHigh = max(touchedHigh, high);
+        if (dy > 0.0) {
+            rising = float3(rising.x + dy, min(rising.y, low), max(rising.z, high));
+        } else {
+            falling = float3(falling.x - dy, min(falling.y, low), max(falling.z, high));
         }
     }
     if (!stackOverlaps(rising) && !stackOverlaps(falling)) {
         return resolveCoverage(winding, fillRule);
     }
-    return stackedCoverage(fillRule, tile, local, pieces, start, count, backdrops);
+    if (!overflowMask && insideCount <= 4u) {
+        return stackedCoverageFast(
+            fillRule,
+            baseLevel,
+            local,
+            pieces,
+            start,
+            leftMask,
+            insideMask,
+            insideCount,
+            touchedLow,
+            touchedHigh
+        );
+    }
+    if (!overflowMask && insideCount <= 8u) {
+        return stackedCoverageEight(
+            fillRule,
+            baseLevel,
+            local,
+            pieces,
+            start,
+            leftMask,
+            insideMask,
+            touchedLow,
+            touchedHigh
+        );
+    }
+    return stackedCoverage(fillRule, tile, local, pieces, start, count, backdrops, touchedLow, touchedHigh);
 }
 
 static float coverageFactor(
@@ -3903,6 +4484,9 @@ static float coverageFactor(
     return coverage;
 }
 
+constant bool kFillNoClips [[function_constant(2)]];
+constant bool kFillNoPaint [[function_constant(3)]];
+
 fragment float4 brixGuiMetalFillFragment(
     FillVertexOut in [[stage_in]],
     const device RoundedClip* clips [[buffer(0)]],
@@ -3921,16 +4505,24 @@ fragment float4 brixGuiMetalFillFragment(
     float4 dest [[color(0), function_constant(kBlendDraw)]]
 ) {
     float2 point = in.position.xy + float2(params.originX, params.originY);
-    float2 local = floor(point - in.origin);
-    float fill = tileCoverage(in.tile, local, in.fillRule, pieces, starts, counts, backdrops, params);
     float inside = step(in.mask.x, point.x) * step(in.mask.y, point.y) *
         step(point.x, in.mask.z) * step(point.y, in.mask.w);
-    float4 color = in.paint != 0u
-        ? in.color * paintColor(point, in.paint, paints, stops, atlas0, atlas1)
-        : in.color;
-    float shape = fill * inside *
-        roundedClipCoverage(point, in.roundedClip, clips);
-    if (in.coverage != 0u) {
+    if (!kBlendDraw && inside <= 0.0) {
+        return float4(0.0);
+    }
+    float2 local = floor(point - in.origin);
+    float fill = tileCoverage(in.tile, local, in.fillRule, pieces, starts, counts, backdrops, params);
+    float shape = fill * inside;
+    if (!kBlendDraw && shape <= 0.0) {
+        return float4(0.0);
+    }
+    if (!kFillNoClips && in.roundedClip != 0u) {
+        shape *= roundedClipCoverage(point, in.roundedClip, clips);
+        if (!kBlendDraw && shape <= 0.0) {
+            return float4(0.0);
+        }
+    }
+    if (!kFillNoClips && in.coverage != 0u) {
         shape *= coverageFactor(
             point,
             in.coverage,
@@ -3947,13 +4539,20 @@ fragment float4 brixGuiMetalFillFragment(
             atlas1,
             maskPages
         );
+        if (!kBlendDraw && shape <= 0.0) {
+            return float4(0.0);
+        }
     }
+    bool dithers = false;
+    float4 color = (!kFillNoPaint && in.paint != 0u)
+        ? in.color * paintColorWithDither(point, in.paint, paints, stops, atlas0, atlas1, dithers)
+        : in.color;
     if (kBlendDraw) {
         return blendResult(float4(color.rgb * color.a, color.a), shape, dest, in.blend);
     }
     float alpha = color.a * shape;
     float3 rgb = color.rgb * alpha;
-    if (in.paint != 0u && paintDithers(in.paint, paints)) {
+    if (!kFillNoPaint && dithers) {
         rgb += ditherNoise(point) * shape / 255.0;
     }
     return float4(rgb, alpha);
@@ -4535,11 +5134,18 @@ static id<MTLRenderPipelineState> buildBlendDrawPipeline(
 #endif
 }
 
-static MTLFunctionConstantValues* newSurfaceConstants(MTLPixelFormat format, bool blend) {
+static MTLFunctionConstantValues* newSurfaceConstants(
+    MTLPixelFormat format,
+    bool blend,
+    bool fillNoClips = false,
+    bool fillNoPaint = false
+) {
     MTLFunctionConstantValues* values = [MTLFunctionConstantValues new];
     bool extended = format != MTLPixelFormatBGRA8Unorm;
     [values setConstantValue:&blend type:MTLDataTypeBool atIndex:0];
     [values setConstantValue:&extended type:MTLDataTypeBool atIndex:1];
+    [values setConstantValue:&fillNoClips type:MTLDataTypeBool atIndex:2];
+    [values setConstantValue:&fillNoPaint type:MTLDataTypeBool atIndex:3];
     return values;
 }
 
@@ -4552,6 +5158,8 @@ static void releaseSurfacePipelines(SurfacePipelines& set) {
         pipeline = nil;
     }
     set.fillRender = nil;
+    set.fillRenderNoClips = nil;
+    set.fillRenderPlain = nil;
     set.fillSolid = nil;
     set.fillBlend = nil;
     set.layerBlurPipeline = nil;
@@ -4658,6 +5266,8 @@ static bool buildKernels(id<MTLDevice> device, id<MTLLibrary> library, std::vect
 static bool buildSurfacePipelines(SharedPipelines& shared, SurfacePipelines& set) {
     id<MTLLibrary> library = shared.library;
     MTLFunctionConstantValues* plain = newSurfaceConstants(set.format, false);
+    MTLFunctionConstantValues* fillNoClips = newSurfaceConstants(set.format, false, true, false);
+    MTLFunctionConstantValues* fillPlain = newSurfaceConstants(set.format, false, true, true);
     MTLFunctionConstantValues* blended = newSurfaceConstants(set.format, true);
     id<MTLFunction> vertex = [library newFunctionWithName:@"brixGuiMetalVertex"];
     id<MTLFunction> fillVertex = [library newFunctionWithName:@"brixGuiMetalFillVertex"];
@@ -4687,6 +5297,12 @@ static bool buildSurfacePipelines(SharedPipelines& shared, SurfacePipelines& set
     }
     jobs.push_back(renderJob(
         &set.fillRender, fillVertex, @"brixGuiMetalFillFragment", plain, true, MTLColorWriteMaskAll, set.format
+    ));
+    jobs.push_back(renderJob(
+        &set.fillRenderNoClips, fillVertex, @"brixGuiMetalFillFragment", fillNoClips, true, MTLColorWriteMaskAll, set.format
+    ));
+    jobs.push_back(renderJob(
+        &set.fillRenderPlain, fillVertex, @"brixGuiMetalFillFragment", fillPlain, true, MTLColorWriteMaskAll, set.format
     ));
     jobs.push_back(renderJob(
         &set.fillSolid, fillVertex, @"brixGuiMetalFillSolidFragment", plain, false, MTLColorWriteMaskAll, set.format
@@ -4935,7 +5551,18 @@ static uint32_t drawBlend(const ExpandState& state) {
     }
 }
 
-static void transformBounds(const double* matrix, const double* rect, double* out) {
+static inline void transformBounds(const double* matrix, const double* rect, double* out) {
+    if (matrix[1] == 0 && matrix[2] == 0) {
+        double x0 = matrix[0] * rect[0] + matrix[4];
+        double x1 = matrix[0] * rect[2] + matrix[4];
+        double y0 = matrix[3] * rect[1] + matrix[5];
+        double y1 = matrix[3] * rect[3] + matrix[5];
+        out[0] = std::min(x0, x1);
+        out[1] = std::min(y0, y1);
+        out[2] = std::max(x0, x1);
+        out[3] = std::max(y0, y1);
+        return;
+    }
     double corners[4][2] = {
         {rect[0], rect[1]}, {rect[2], rect[1]}, {rect[0], rect[3]}, {rect[2], rect[3]},
     };
@@ -5098,13 +5725,45 @@ static void noteBatchRect(ExpandState& state, double left, double top, double ri
         ensureVectorCapacity(renderer, rects, index + 1);
         rects.resize(index + 1, BatchRects{{}, 0});
     }
+    BatchRects& bounds = rects[index];
+    const Batch& batch = renderer->batches[index];
+    if (batch.pipeline == PipelineFill) {
+        const FillBatchInfo& info = renderer->fillBatches[batch.start];
+        if (info.drawEnd - info.drawStart > 32) {
+            float fl = static_cast<float>(left);
+            float ft = static_cast<float>(top);
+            float fr = static_cast<float>(right);
+            float fb = static_cast<float>(bottom);
+            if (bounds.count != 1) {
+                float u0 = fl, u1 = ft, u2 = fr, u3 = fb;
+                for (uint32_t i = 0; i < bounds.count; ++i) {
+                    u0 = std::min(u0, bounds.rects[i][0]);
+                    u1 = std::min(u1, bounds.rects[i][1]);
+                    u2 = std::max(u2, bounds.rects[i][2]);
+                    u3 = std::max(u3, bounds.rects[i][3]);
+                }
+                bounds.rects[0][0] = u0;
+                bounds.rects[0][1] = u1;
+                bounds.rects[0][2] = u2;
+                bounds.rects[0][3] = u3;
+                bounds.count = 1;
+            } else {
+                float* r = bounds.rects[0];
+                if (fl < r[0]) r[0] = fl;
+                if (ft < r[1]) r[1] = ft;
+                if (fr > r[2]) r[2] = fr;
+                if (fb > r[3]) r[3] = fb;
+            }
+            return;
+        }
+    }
     float rect[4] = {
         static_cast<float>(floor(left)),
         static_cast<float>(floor(top)),
         static_cast<float>(ceil(right)),
         static_cast<float>(ceil(bottom)),
     };
-    includeBatchRect(rects[index], rect);
+    includeBatchRect(bounds, rect);
 }
 
 static void emitInstance(
@@ -5959,7 +6618,7 @@ static ImageTile* findImageTile(ImageTexture& image, uint32_t level, uint32_t co
 static uint32_t imageLevelExtent(uint32_t size, uint32_t level);
 
 static void sweepBrushDabs(MetalRenderer* renderer);
-static void releaseBrushDabs(std::vector<FillSpanRecord>& spans);
+static void releaseBrushDabs(FillGeometryRecord& geometry);
 
 namespace {
 
@@ -6436,47 +7095,73 @@ static FillGeometryRecord* fillGeometryFor(
     return record.resident && record.generation == generation ? &record : nullptr;
 }
 
-static bool fillDrawExtent(const FrameFillDraw& source, const MTLScissorRect& scissor, double* out, double margin = 1) {
-    const double* device = source.device;
+static void emitFillDraw(ExpandState& state, FrameFillDraw& draw, const MTLScissorRect& scissor) {
+    MetalRenderer* renderer = state.renderer;
+    bool source = (draw.clip & 3u) == FillClipSource;
+    uint32_t blend = source ? 0 : drawBlend(state);
+    if (blend == kBlendSkip) {
+        return;
+    }
+    float mask0 = draw.mask[0];
+    float mask1 = draw.mask[1];
+    float mask2 = draw.mask[2];
+    float mask3 = draw.mask[3];
+    MTLScissorRect batchScissor = scissor;
+    if (source || blend <= 15) {
+        mask0 = std::max(mask0, static_cast<float>(scissor.x));
+        mask1 = std::max(mask1, static_cast<float>(scissor.y));
+        mask2 = std::min(mask2, static_cast<float>(scissor.x + scissor.width));
+        mask3 = std::min(mask3, static_cast<float>(scissor.y + scissor.height));
+        if (!source && !(mask0 < mask2 && mask1 < mask3)) {
+            return;
+        }
+        batchScissor = MTLScissorRect{
+            0,
+            0,
+            static_cast<NSUInteger>(std::max(renderer->pixelWidth, 0)),
+            static_cast<NSUInteger>(std::max(renderer->pixelHeight, 0)),
+        };
+    }
+    const double* device = draw.device;
+    double originX = device[0] * draw.originX + device[2] * draw.originY + device[4];
+    double originY = device[1] * draw.originX + device[3] * draw.originY + device[5];
     double origin[6] = {
         device[0],
         device[1],
         device[2],
         device[3],
-        device[0] * source.originX + device[2] * source.originY + device[4],
-        device[1] * source.originX + device[3] * source.originY + device[5],
+        originX,
+        originY,
     };
-    double bounds[4];
-    transformBounds(origin, source.bounds, bounds);
-    out[0] = std::max({bounds[0] - margin, static_cast<double>(scissor.x),
-        static_cast<double>(source.mask[0])});
-    out[1] = std::max({bounds[1] - margin, static_cast<double>(scissor.y),
-        static_cast<double>(source.mask[1])});
-    out[2] = std::min({bounds[2] + margin, static_cast<double>(scissor.x + scissor.width),
-        static_cast<double>(source.mask[2])});
-    out[3] = std::min({bounds[3] + margin, static_cast<double>(scissor.y + scissor.height),
-        static_cast<double>(source.mask[3])});
-    return out[0] < out[2] && out[1] < out[3];
-}
-
-static void emitFillDraw(ExpandState& state, FrameFillDraw& draw, const MTLScissorRect& scissor) {
-    MetalRenderer* renderer = state.renderer;
-    bool source = (draw.clip & 3u) == FillClipSource;
-    draw.blend = source ? 0 : drawBlend(state);
-    if (draw.blend == kBlendSkip) {
-        return;
-    }
-    if (state.layerDepth && !source) {
-        double extent[4];
-        if (fillDrawExtent(draw, scissor, extent)) {
-            includeLayerBounds(state, extent[0], extent[1], extent[2], extent[3]);
+    double deviceBounds[4];
+    transformBounds(origin, draw.bounds, deviceBounds);
+    double clamp0 = std::max(static_cast<double>(batchScissor.x), static_cast<double>(mask0));
+    double clamp1 = std::max(static_cast<double>(batchScissor.y), static_cast<double>(mask1));
+    double clamp2 = std::min(static_cast<double>(batchScissor.x + batchScissor.width), static_cast<double>(mask2));
+    double clamp3 = std::min(static_cast<double>(batchScissor.y + batchScissor.height), static_cast<double>(mask3));
+    double extent[4] = {0, 0, 0, 0};
+    bool hasExtent = false;
+    if (!source) {
+        extent[0] = std::max(deviceBounds[0], clamp0);
+        extent[1] = std::max(deviceBounds[1], clamp1);
+        extent[2] = std::min(deviceBounds[2], clamp2);
+        extent[3] = std::min(deviceBounds[3], clamp3);
+        hasExtent = extent[0] < extent[2] && extent[1] < extent[3];
+        if (state.layerDepth && hasExtent) {
+            double lx0 = std::max(deviceBounds[0] - 1.0, clamp0);
+            double ly0 = std::max(deviceBounds[1] - 1.0, clamp1);
+            double lx1 = std::min(deviceBounds[2] + 1.0, clamp2);
+            double ly1 = std::min(deviceBounds[3] + 1.0, clamp3);
+            if (lx0 < lx1 && ly0 < ly1) {
+                includeLayerBounds(state, lx0, ly0, lx1, ly1);
+            }
         }
     }
     std::vector<Batch>& batches = *state.batchSink;
     uint32_t drawIndex = static_cast<uint32_t>(renderer->fillDraws.size());
     bool extend = !batches.empty() && batches.back().pipeline == PipelineFill &&
-        scissorsEqual(batches.back().scissor, scissor) &&
-        batches.back().blend == (draw.blend != 0) &&
+        scissorsEqual(batches.back().scissor, batchScissor) &&
+        batches.back().blend == (blend != 0) &&
         renderer->fillBatches[batches.back().start].drawEnd == drawIndex &&
         renderer->fillBatches[batches.back().start].shader == draw.shader;
     if (!extend) {
@@ -6484,21 +7169,106 @@ static void emitFillDraw(ExpandState& state, FrameFillDraw& draw, const MTLSciss
         ensureVectorCapacity(renderer, batches, batches.size() + 1);
         uint32_t created = static_cast<uint32_t>(renderer->fillBatches.size());
         renderer->fillBatches.push_back(
-            FillBatchInfo{scissor, drawIndex, drawIndex, false, draw.blend != 0, draw.shader}
+            FillBatchInfo{batchScissor, drawIndex, drawIndex, false, blend != 0, draw.shader, false}
         );
-        Batch batch = {PipelineFill, nil, scissor, created, 1, draw.blend != 0, draw.shader};
+        Batch batch = {PipelineFill, nil, batchScissor, created, 1, blend != 0, draw.shader};
         batches.push_back(batch);
     }
     uint32_t fillBatch = batches.back().start;
-    draw.batch = fillBatch;
-    draw.roundedClip = state.roundedClip;
-    ensureVectorCapacity(renderer, renderer->fillDraws, renderer->fillDraws.size() + 1);
-    renderer->fillDraws.push_back(draw);
-    renderer->fillBatches[fillBatch].drawEnd = drawIndex + 1;
-    renderer->fillBatches[fillBatch].paints |= !source;
-    double extent[4];
-    if (state.batchSink == &renderer->batches && fillDrawExtent(draw, scissor, extent, 0)) {
-        noteBatchRect(state, extent[0], extent[1], extent[2], extent[3]);
+    if (drawIndex == renderer->fillDraws.capacity()) {
+        ensureVectorCapacity(renderer, renderer->fillDraws, static_cast<size_t>(drawIndex) + 1);
+    }
+    FillDrawGPU& out = *renderer->fillDraws.growUninit(1);
+    memcpy(out.color, draw.color, sizeof(out.color));
+    out.mask[0] = mask0;
+    out.mask[1] = mask1;
+    out.mask[2] = mask2;
+    out.mask[3] = mask3;
+    double e0 = std::max(deviceBounds[0] - 1.0, clamp0);
+    double e1 = std::max(deviceBounds[1] - 1.0, clamp1);
+    double e2 = std::min(deviceBounds[2] + 1.0, clamp2);
+    double e3 = std::min(deviceBounds[3] + 1.0, clamp3);
+    if (batchScissor.width && batchScissor.height && e0 < e2 && e1 < e3) {
+        int32_t px0 = static_cast<int32_t>(floor(e0));
+        int32_t py0 = static_cast<int32_t>(floor(e1));
+        int32_t px1 = static_cast<int32_t>(ceil(e2));
+        int32_t py1 = static_cast<int32_t>(ceil(e3));
+        int32_t tileX = px0 >> 4;
+        int32_t tileY = py0 >> 4;
+        uint32_t tileW = static_cast<uint32_t>(((px1 + 15) >> 4) - tileX);
+        uint32_t tileH = static_cast<uint32_t>(((py1 + 15) >> 4) - tileY);
+        out.extent[0] = static_cast<float>(px0);
+        out.extent[1] = static_cast<float>(py0);
+        out.extent[2] = static_cast<float>(px1);
+        out.extent[3] = static_cast<float>(py1);
+        out.tileX = tileX;
+        out.tileY = tileY;
+        out.tileW = tileW;
+        out.tileH = tileH;
+    } else {
+        out.extent[0] = 0;
+        out.extent[1] = 0;
+        out.extent[2] = 0;
+        out.extent[3] = 0;
+        out.tileX = 0;
+        out.tileY = 0;
+        out.tileW = 0;
+        out.tileH = 0;
+        renderer->fillDrawsHaveSkipped = true;
+    }
+    out.a = static_cast<float>(device[0]);
+    out.b = static_cast<float>(device[1]);
+    out.c = static_cast<float>(device[2]);
+    out.d = static_cast<float>(device[3]);
+    out.tx = static_cast<float>(originX);
+    out.ty = static_cast<float>(originY);
+    out.segmentStart = draw.segmentStart;
+    out.segmentCount = draw.segmentCount;
+    out.segmentBase = 0;
+    out.fillRule = draw.fillRule | (blend << 8);
+    out.tileBase = 0;
+    out.rowBase = 0;
+    out.batch = fillBatch;
+    out.roundedClip = state.roundedClip;
+    out.halfWidth = draw.halfWidth;
+    out.strokeStyle = draw.strokeStyle;
+    out.clip = draw.clip;
+    out.coverage = draw.coverage;
+    out.dash = draw.dash;
+    out.paint = draw.paint;
+    FillBatchInfo& info = renderer->fillBatches[fillBatch];
+    info.drawEnd = drawIndex + 1;
+    info.paints |= !source;
+    if (!source && hasExtent && !info.mayHaveOpaque &&
+            blend == 0 && out.color[3] >= 1.0f &&
+            out.roundedClip == 0 && !(out.paint & FillPaintTranslucent) &&
+            extent[2] - extent[0] >= 16.0 && extent[3] - extent[1] >= 16.0) {
+        if (out.halfWidth == 0) {
+            info.mayHaveOpaque = true;
+        } else {
+            double col0 = std::sqrt(device[0] * device[0] + device[1] * device[1]);
+            double col1 = std::sqrt(device[2] * device[2] + device[3] * device[3]);
+            if (out.halfWidth * 2.0 * std::max(col0, col1) >= 16.0) {
+                info.mayHaveOpaque = true;
+            }
+        }
+    }
+    if (!source && state.batchSink == &renderer->batches && hasExtent) {
+        size_t batchIndex = batches.size() - 1;
+        if (info.drawEnd - info.drawStart > 33 && batchIndex < renderer->batchRects.size() &&
+                renderer->batchRects[batchIndex].count == 1) {
+            float* r = renderer->batchRects[batchIndex].rects[0];
+            float fl = static_cast<float>(extent[0]);
+            float ft = static_cast<float>(extent[1]);
+            float fr = static_cast<float>(extent[2]);
+            float fb = static_cast<float>(extent[3]);
+            if (fl < r[0]) r[0] = fl;
+            if (ft < r[1]) r[1] = ft;
+            if (fr > r[2]) r[2] = fr;
+            if (fb > r[3]) r[3] = fb;
+        } else {
+            noteBatchRect(state, extent[0], extent[1], extent[2], extent[3]);
+        }
     }
 }
 
@@ -7051,7 +7821,7 @@ static uint32_t appendGradientPaint(
         shader = gradient.shader;
         return appendShaderPaint(renderer, set, gradient, paint);
     }
-    bool translucent = alpha < 1;
+    bool translucent = alpha < 1 || (index - 1 < set.gradientTranslucent.size() && set.gradientTranslucent[index - 1] != 0);
     if (gradient.kind == 1) {
         double dx = gradient.end[0] - gradient.start[0];
         double dy = gradient.end[1] - gradient.start[1];
@@ -7059,8 +7829,9 @@ static uint32_t appendGradientPaint(
         if (!(length > 0)) {
             return 0;
         }
-        paint.p0 = static_cast<float>(dx / length);
-        paint.p1 = static_cast<float>(dy / length);
+        double invLen = 1.0 / length;
+        paint.p0 = static_cast<float>(dx * invLen);
+        paint.p1 = static_cast<float>(dy * invLen);
     } else if (gradient.kind == 2) {
         paint.p0 = static_cast<float>(gradient.end[0] - gradient.start[0]);
         paint.p1 = static_cast<float>(gradient.end[1] - gradient.start[1]);
@@ -7075,11 +7846,8 @@ static uint32_t appendGradientPaint(
     paint.stopStart = static_cast<uint32_t>(renderer->fillStops.size());
     paint.stopCount = gradient.stopCount;
     ensureVectorCapacity(renderer, renderer->fillStops, renderer->fillStops.size() + gradient.stopCount);
-    for (uint32_t stop = 0; stop < gradient.stopCount; ++stop) {
-        const FillStopGPU& source = set.stops[gradient.stopStart + stop];
-        translucent = translucent || source.color[3] < 1;
-        renderer->fillStops.push_back(source);
-    }
+    FillStopGPU* stopDst = renderer->fillStops.growUninit(gradient.stopCount);
+    std::memcpy(stopDst, set.stops.data() + gradient.stopStart, gradient.stopCount * sizeof(FillStopGPU));
     ensureVectorCapacity(renderer, renderer->fillPaints, renderer->fillPaints.size() + 1);
     renderer->fillPaints.push_back(paint);
     uint32_t record = static_cast<uint32_t>(renderer->fillPaints.size());
@@ -7133,30 +7901,87 @@ static void emitCoverageQuad(
     emitInstance(state, PipelineTier1, nil, instance);
 }
 
+static double fillPathAreaGPU(const FillSegmentGPU* segments, uint32_t count) {
+    double area = 0;
+    double subpathArea = 0;
+    bool mixed = false;
+    for (uint32_t index = 0; index < count; ++index) {
+        const FillSegmentGPU& segment = segments[index];
+        if (segment.kind & FillSegmentStart) {
+            mixed = mixed || subpathArea * area < 0;
+            area += subpathArea;
+            subpathArea = 0;
+        }
+        const float* p = segment.p;
+        auto cross = [p](int first, int second) {
+            return static_cast<double>(p[first * 2]) * p[second * 2 + 1] -
+                static_cast<double>(p[second * 2]) * p[first * 2 + 1];
+        };
+        if ((segment.kind & FillSegmentKindMask) == 0) {
+            subpathArea += cross(0, 3) * 0.5;
+        } else {
+            subpathArea += (12 * cross(0, 1) + 6 * cross(0, 2) + 2 * cross(0, 3) +
+                6 * cross(1, 2) + 6 * cross(1, 3) + 12 * cross(2, 3)) / 40;
+        }
+    }
+    mixed = mixed || subpathArea * area < 0;
+    area += subpathArea;
+    return mixed ? 0 : std::fabs(area);
+}
+
 static bool emitTinyFill(ExpandState& state, const FrameFillDraw& draw, const FillPathRecord& path) {
     double bounds[4];
-    if (!(path.area > 0) || draw.paint || draw.shader || draw.fillRule ||
+    if (draw.paint || draw.shader || draw.fillRule ||
             !tinyDeviceBounds(draw, kTinyPathPixels, bounds)) {
         return false;
     }
-    emitCoverageQuad(state, draw, bounds, path.area, 0);
+    double area = path.area > 0
+        ? path.area
+        : fillPathAreaGPU(state.renderer->fillSegments.data() + path.segmentStart, path.segmentCount);
+    if (!(area > 0)) {
+        return false;
+    }
+    emitCoverageQuad(state, draw, bounds, area, 0);
     return true;
 }
 
 static bool emitTinyStroke(ExpandState& state, const FrameFillDraw& draw, const FillPathRecord& path, double half) {
     double bounds[4];
     bool blob = path.width <= half * 2 && path.height <= half * 2;
-    if (draw.dash > 0 || !(path.length > 0) ||
+    if (draw.dash > 0 ||
             !tinyDeviceBounds(draw, blob ? kTinyPathPixels : kTinyOutlinePixels, bounds)) {
         return false;
     }
     const FillSegmentGPU* segments = state.renderer->fillSegments.data() + path.segmentStart;
     uint32_t subpaths = 0;
+    double length = path.length;
+    bool computeLength = !(length > 0);
     for (uint32_t index = 0; index < path.segmentCount; ++index) {
-        subpaths += (segments[index].kind & FillSegmentStart) ? 1u : 0u;
+        const FillSegmentGPU& seg = segments[index];
+        subpaths += (seg.kind & FillSegmentStart) ? 1u : 0u;
+        if (computeLength && !(seg.kind & FillSegmentImplicit)) {
+            const float* p = seg.p;
+            double dx = p[6] - p[0];
+            double dy = p[7] - p[1];
+            double chord = std::sqrt(dx * dx + dy * dy);
+            if ((seg.kind & FillSegmentKindMask) == 0) {
+                length += chord;
+            } else {
+                double d0x = p[2] - p[0], d0y = p[3] - p[1];
+                double d1x = p[4] - p[2], d1y = p[5] - p[3];
+                double d2x = p[6] - p[4], d2y = p[7] - p[5];
+                double polygon = std::sqrt(d0x * d0x + d0y * d0y) +
+                    std::sqrt(d1x * d1x + d1y * d1y) +
+                    std::sqrt(d2x * d2x + d2y * d2y);
+                length += (chord + polygon) * 0.5;
+            }
+        }
+    }
+    if (!(length > 0)) {
+        return false;
     }
     double box = (path.width + half * 2) * (path.height + half * 2) - (4 - M_PI) * half * half;
-    double sweep = path.length * half * 2 + subpaths * M_PI * half * half;
+    double sweep = length * half * 2 + subpaths * M_PI * half * half;
     double radius = half * std::min(std::fabs(draw.device[0]), std::fabs(draw.device[3]));
     emitCoverageQuad(state, draw, bounds, std::min(box, sweep), radius);
     return true;
@@ -7193,6 +8018,50 @@ static void emitSpanDraws(
     draw.dash = 0;
     draw.paint = 0;
     draw.shader = 0;
+    int64_t strokeColor = -1;
+    if (span.strokeRole == 0) {
+        strokeColor = inheritedStroke;
+    } else if (span.strokeRole != 2) {
+        strokeColor = span.strokePaletteIndex < explicitCount
+            ? static_cast<int64_t>(span.strokePaletteIndex)
+            : -1;
+    }
+    double strokeWidth = span.strokeWidth >= 0 ? span.strokeWidth : defaultWidth;
+    bool hasStroke = false;
+    if (strokeColor >= 0 && strokeWidth > 0 && std::isfinite(strokeWidth)) {
+        float strokeAlpha = 0;
+        memcpy(&strokeAlpha, paletteBytes + strokeColor * sizeof(draw.color) + 3 * sizeof(float), sizeof(float));
+        hasStroke = strokeAlpha > 0;
+    }
+    uint32_t cap = span.strokeCap != FillStrokeInherit ? span.strokeCap : (defaultStyle & 15u);
+    uint32_t join = span.strokeJoin != FillStrokeInherit
+        ? span.strokeJoin
+        : ((defaultStyle >> 4) & 15u);
+    double half = span.strokeAlignment == FillAlignCenter ? strokeWidth * 0.5 : strokeWidth;
+    double outset = hasStroke ? half * std::max(
+        cap == FillStrokeCapSquare ? M_SQRT2 : 1.0,
+        join == FillStrokeJoinMiter ? path.miterScale : 1.0
+    ) : 0;
+    bool inFillBatch = !state.batchSink->empty() &&
+        state.batchSink->back().pipeline == PipelineFill &&
+        state.batchSink->back().blend == (drawBlend(state) != 0) &&
+        state.renderer->fillBatches[state.batchSink->back().start].shader == 0;
+    bool strokeUsesFill = inFillBatch;
+    if (hasStroke && !strokeUsesFill) {
+        bool strokeEligible = !span.hasBrush && span.strokeAlignment == FillAlignCenter &&
+            cap == FillStrokeCapRound && join == FillStrokeJoinRound &&
+            !(dash > 0);
+        if (!strokeEligible) {
+            strokeUsesFill = true;
+        } else {
+            bool blob = path.width <= half * 2 && path.height <= half * 2;
+            double limit = blob ? kTinyPathPixels : kTinyOutlinePixels;
+            double strokeWidthDev = (path.width + outset * 2) * std::fabs(draw.device[0]);
+            double strokeHeightDev = (path.height + outset * 2) * std::fabs(draw.device[3]);
+            strokeUsesFill = draw.device[1] != 0 || draw.device[2] != 0 ||
+                !(strokeWidthDev <= limit && strokeHeightDev <= limit);
+        }
+    }
     int64_t fillColor = -1;
     if (span.role == 3) {
         fillColor = span.paletteIndex < explicitCount ? static_cast<int64_t>(span.paletteIndex) : -1;
@@ -7219,41 +8088,17 @@ static void emitSpanDraws(
             draw.fillRule = span.fillRule;
             draw.halfWidth = 0;
             draw.strokeStyle = 0;
-            if (span.brush || !emitTinyFill(state, draw, path)) {
+            if (inFillBatch || span.hasBrush || strokeUsesFill || !emitTinyFill(state, draw, path)) {
                 emitFillDraw(state, draw, scissor);
             }
         }
     }
-    int64_t strokeColor = -1;
-    if (span.strokeRole == 0) {
-        strokeColor = inheritedStroke;
-    } else if (span.strokeRole != 2) {
-        strokeColor = span.strokePaletteIndex < explicitCount
-            ? static_cast<int64_t>(span.strokePaletteIndex)
-            : -1;
-    }
-    if (strokeColor < 0) {
+    if (!hasStroke) {
         return;
     }
     draw.paint = 0;
     draw.shader = 0;
     memcpy(draw.color, paletteBytes + strokeColor * sizeof(draw.color), sizeof(draw.color));
-    if (draw.color[3] <= 0) {
-        return;
-    }
-    double width = span.strokeWidth >= 0 ? span.strokeWidth : defaultWidth;
-    if (!(width > 0) || !std::isfinite(width)) {
-        return;
-    }
-    uint32_t cap = span.strokeCap != FillStrokeInherit ? span.strokeCap : (defaultStyle & 15u);
-    uint32_t join = span.strokeJoin != FillStrokeInherit
-        ? span.strokeJoin
-        : ((defaultStyle >> 4) & 15u);
-    double half = span.strokeAlignment == FillAlignCenter ? width * 0.5 : width;
-    double outset = half * std::max(
-        cap == FillStrokeCapSquare ? M_SQRT2 : 1.0,
-        join == FillStrokeJoinMiter ? path.miterScale : 1.0
-    );
     draw.bounds[0] = -outset;
     draw.bounds[1] = -outset;
     draw.bounds[2] = path.width + outset;
@@ -7280,8 +8125,8 @@ static void emitSpanDraws(
         double extension = cap == FillStrokeCapButt ? 0 : half * 2;
         draw.color[3] *= static_cast<float>(std::min(1.0, (dash + extension) / (dash * 2)));
     }
-    bool eligible = !span.brush && span.strokeAlignment == FillAlignCenter && cap == FillStrokeCapRound &&
-        join == FillStrokeJoinRound;
+    bool eligible = !inFillBatch && !span.hasBrush && span.strokeAlignment == FillAlignCenter &&
+        cap == FillStrokeCapRound && join == FillStrokeJoinRound;
     if (!eligible || !emitTinyStroke(state, draw, path, half)) {
         emitFillDraw(state, draw, scissor);
     }
@@ -7295,11 +8140,15 @@ static void emitBrushDraw(
     const MTLScissorRect& scissor
 ) {
     MetalRenderer* renderer = state.renderer;
-    if (!span.dabs || span.dabs->dabs.empty() || !span.brush || span.brush > set.gradients.size() ||
+    if (span.extra >= set.geometry.extras.size()) {
+        return;
+    }
+    const FillSpanExtra& extra = set.geometry.extras[span.extra];
+    if (!extra.dabs || extra.dabs->dabs.empty() || !extra.brush || extra.brush > set.gradients.size() ||
             span.path >= set.geometry.paths.size()) {
         return;
     }
-    const BxGuiMetalGradient& brush = set.gradients[span.brush - 1];
+    const BxGuiMetalGradient& brush = set.gradients[extra.brush - 1];
     if (brush.stopCount < kBrushParams || brush.stopStart > set.shaderArgs.size() ||
             brush.stopCount > set.shaderArgs.size() - brush.stopStart) {
         return;
@@ -7313,10 +8162,10 @@ static void emitBrushDraw(
     if (blend == kBlendSkip || !ensureShader(renderer, ShaderRoleDab, brush.shader)) {
         return;
     }
-    const BxGraphicsDab* dabs = span.dabs->dabs.data();
-    uint32_t count = static_cast<uint32_t>(span.dabs->dabs.size());
+    const BxGraphicsDab* dabs = extra.dabs->dabs.data();
+    uint32_t count = static_cast<uint32_t>(extra.dabs->dabs.size());
     if (reveal < 1) {
-        float limit = static_cast<float>(reveal * span.dabs->total);
+        float limit = static_cast<float>(reveal * extra.dabs->total);
         count = static_cast<uint32_t>(std::upper_bound(
             dabs,
             dabs + count,
@@ -7373,7 +8222,7 @@ static void emitBrushDraw(
     draw.style.taperStart = params[8];
     draw.style.taperEnd = params[9];
     draw.style.seed = params[11];
-    draw.style.total = static_cast<float>(span.dabs->total);
+    draw.style.total = static_cast<float>(extra.dabs->total);
     draw.paper = renderer->scale > 0 ? static_cast<float>(1.0 / renderer->scale) : 1.0f;
     draw.paperX = static_cast<float>(state.paper[0]);
     draw.paperY = static_cast<float>(state.paper[1]);
@@ -7439,7 +8288,7 @@ static const FillPathRecord& ensureUnitRect(MetalRenderer* renderer) {
         renderer->fillSegments[path.segmentStart].kind = FillSegmentStart | FillSegmentClosed;
         renderer->fillSegments[path.segmentStart + 3].kind = FillSegmentEnd | FillSegmentClosed;
         renderer->fillSegments[path.segmentStart + 3].link = 3;
-        geometry.paths.assign(1, path);
+        geometry.paths.assignFrom(&path, 1);
         geometry.resident = true;
     }
     return geometry.paths[0];
@@ -7713,7 +8562,7 @@ static void expandShadow(
     ExpandState& state,
     const PathOp& op,
     const FillPathRecord& path,
-    const FillSpanRecord& span,
+    const FillSpanExtra& extra,
     const float* color,
     FrameStats& stats
 ) {
@@ -7735,12 +8584,12 @@ static void expandShadow(
     draw.bounds[3] = path.height;
     const double* device = draw.device;
     double deviceScale = std::sqrt(std::fabs(device[0] * device[3] - device[1] * device[2]));
-    double blur = std::max(0.0, span.shadowBlur);
+    double blur = std::max(0.0, extra.shadowBlur);
     double deviceBlur = blur * deviceScale;
     uint32_t radius = deviceBlur > 1e-9 ? static_cast<uint32_t>(ceil(deviceBlur - 1e-9)) : 0;
     double shift[2] = {
-        floor(device[0] * span.shadowOffset[0] + device[2] * span.shadowOffset[1] + 0.5),
-        std::round(device[1] * span.shadowOffset[0] + device[3] * span.shadowOffset[1]),
+        floor(device[0] * extra.shadowOffset[0] + device[2] * extra.shadowOffset[1] + 0.5),
+        std::round(device[1] * extra.shadowOffset[0] + device[3] * extra.shadowOffset[1]),
     };
     double local[4] = {path.originX, path.originY, path.originX + path.width, path.originY + path.height};
     double bounds[4];
@@ -7822,17 +8671,20 @@ static void expandPath(ExpandState& state, const PathOp& op, FrameStats& stats) 
         return;
     }
     const ChunkPathSet& set = renderer->chunkPaths[op.slot];
-    if (!set.geometry.resident || set.serial != op.serial || op.span >= set.geometry.spans.size()) {
+    if (!set.geometry.resident || set.serial != op.serial || !op.count ||
+            op.span >= set.geometry.spans.size() || op.count > set.geometry.spans.size() - op.span) {
         ++stats.skippedOps;
         return;
     }
-    const FillSpanRecord& span = set.geometry.spans[op.span];
-    if (span.shadow) {
-        size_t colorIndex = static_cast<size_t>(span.paletteIndex) * 4;
-        if (span.path < set.geometry.paths.size() && colorIndex + 4 <= set.palette.size()) {
-            expandShadow(state, op, set.geometry.paths[span.path], span, &set.palette[colorIndex], stats);
+    if (op.count == 1) {
+        const FillSpanRecord& span = set.geometry.spans[op.span];
+        if (span.shadow && span.extra < set.geometry.extras.size()) {
+            size_t colorIndex = static_cast<size_t>(span.paletteIndex) * 4;
+            if (span.path < set.geometry.paths.size() && colorIndex + 4 <= set.palette.size()) {
+                expandShadow(state, op, set.geometry.paths[span.path], set.geometry.extras[span.extra], &set.palette[colorIndex], stats);
+            }
+            return;
         }
-        return;
     }
     MTLScissorRect scissor = clipToScissor(renderer, state.clip);
     if (!scissor.width || !scissor.height) {
@@ -7843,23 +8695,507 @@ static void expandPath(ExpandState& state, const PathOp& op, FrameStats& stats) 
     pushMaskCoverage(state, op.contentMask);
     FrameFillDraw draw = {};
     prepareFillDraw(state, identity, op.contentMask, draw);
-    emitSpanDraws(
-        state,
-        draw,
-        set.geometry,
-        span,
-        &set,
-        reinterpret_cast<const uint8_t*>(set.palette.data()),
-        static_cast<uint32_t>(set.palette.size() / 4),
-        -1,
-        -1,
-        0,
-        0,
-        deviceDash(draw, span.dash),
-        scissor
-    );
-    if (span.brush) {
-        emitBrushDraw(state, set, span, draw, scissor);
+    const uint8_t* paletteBytes = reinterpret_cast<const uint8_t*>(set.palette.data());
+    uint32_t explicitCount = static_cast<uint32_t>(set.palette.size() / 4);
+    const FillSpanRecord* spans = set.geometry.spans.data();
+    uint32_t blend = drawBlend(state);
+    auto emitGenericSpan = [&](uint32_t spanIndex) {
+        const FillSpanRecord& span = spans[spanIndex];
+        if (span.shadow) {
+            size_t colorIndex = static_cast<size_t>(span.paletteIndex) * 4;
+            if (span.extra < set.geometry.extras.size() && span.path < set.geometry.paths.size() &&
+                    colorIndex + 4 <= set.palette.size()) {
+                PathOp single = op;
+                single.span = spanIndex;
+                single.count = 1;
+                state.coverageClip = coverage;
+                expandShadow(state, single, set.geometry.paths[span.path], set.geometry.extras[span.extra], &set.palette[colorIndex], stats);
+                pushMaskCoverage(state, op.contentMask);
+            }
+            return;
+        }
+        emitSpanDraws(
+            state,
+            draw,
+            set.geometry,
+            span,
+            &set,
+            paletteBytes,
+            explicitCount,
+            -1,
+            -1,
+            0,
+            0,
+            span.dash > 0 ? deviceDash(draw, span.dash) : 0.0,
+            scissor
+        );
+        if (span.hasBrush) {
+            emitBrushDraw(state, set, span, draw, scissor);
+        }
+    };
+    if (op.count > 32 && state.layerDepth == 0 && state.batchSink == &renderer->batches &&
+            blend <= 15 && blend != kBlendSkip) {
+        float mask0 = std::max(draw.mask[0], static_cast<float>(scissor.x));
+        float mask1 = std::max(draw.mask[1], static_cast<float>(scissor.y));
+        float mask2 = std::min(draw.mask[2], static_cast<float>(scissor.x + scissor.width));
+        float mask3 = std::min(draw.mask[3], static_cast<float>(scissor.y + scissor.height));
+        MTLScissorRect batchScissor = {
+            0,
+            0,
+            static_cast<NSUInteger>(std::max(renderer->pixelWidth, 0)),
+            static_cast<NSUInteger>(std::max(renderer->pixelHeight, 0)),
+        };
+        if (mask0 < mask2 && mask1 < mask3 && batchScissor.width && batchScissor.height) {
+            double clamp0 = std::max(static_cast<double>(batchScissor.x), static_cast<double>(mask0));
+            double clamp1 = std::max(static_cast<double>(batchScissor.y), static_cast<double>(mask1));
+            double clamp2 = std::min(static_cast<double>(batchScissor.x + batchScissor.width), static_cast<double>(mask2));
+            double clamp3 = std::min(static_cast<double>(batchScissor.y + batchScissor.height), static_cast<double>(mask3));
+            const double* device = draw.device;
+            float fa = static_cast<float>(device[0]);
+            float fb = static_cast<float>(device[1]);
+            float fc = static_cast<float>(device[2]);
+            float fd = static_cast<float>(device[3]);
+            bool axisAligned = device[1] == 0.0 && device[2] == 0.0;
+            double sx = device[0], sy = device[3], tx = device[4], ty = device[5];
+            double absSx = std::fabs(sx), absSy = std::fabs(sy);
+            double det = device[0] * device[3] - device[1] * device[2];
+            bool hasInv = std::fabs(det) > 0 && std::isfinite(det);
+            double inv0 = 0, inv1 = 0, inv2 = 0, inv3 = 0, inv4 = 0, inv5 = 0;
+            if (hasInv) {
+                double invDet = 1.0 / det;
+                inv0 = device[3] * invDet;
+                inv1 = -device[1] * invDet;
+                inv2 = -device[2] * invDet;
+                inv3 = device[0] * invDet;
+                inv4 = (device[2] * device[5] - device[3] * device[4]) * invDet;
+                inv5 = (device[1] * device[4] - device[0] * device[5]) * invDet;
+            }
+            float fInv0 = static_cast<float>(inv0);
+            float fInv1 = static_cast<float>(inv1);
+            float fInv2 = static_cast<float>(inv2);
+            float fInv3 = static_cast<float>(inv3);
+            double devScale = std::sqrt(std::fabs(det));
+            double col0 = std::sqrt(device[0] * device[0] + device[1] * device[1]);
+            double col1 = std::sqrt(device[2] * device[2] + device[3] * device[3]);
+            double colMax = std::max(col0, col1);
+            const FillPathRecord* pathData = set.geometry.paths.data();
+            size_t pathCount = set.geometry.paths.size();
+            const float* palette = set.palette.data();
+            const BxGuiMetalGradient* gradData = set.gradients.data();
+            size_t gradCount = set.gradients.size();
+            const uint8_t* gradTrans = set.gradientTranslucent.data();
+            size_t stopTotal = set.stops.size();
+            uint32_t curCoverage = state.coverageClip;
+            uint32_t curRoundedClip = state.roundedClip;
+            uint32_t blendBits = blend << 8;
+            bool stopsReady = set.stopsExpandSerial == renderer->expandSerial;
+            uint32_t stopsBase = set.stopsBase;
+            auto ensureStops = [&]() {
+                if (!stopsReady) {
+                    stopsBase = static_cast<uint32_t>(renderer->fillStops.size());
+                    if (stopTotal) {
+                        ensureVectorCapacity(renderer, renderer->fillStops, renderer->fillStops.size() + stopTotal);
+                        FillStopGPU* dst = renderer->fillStops.growUninit(stopTotal);
+                        std::memcpy(dst, set.stops.data(), stopTotal * sizeof(FillStopGPU));
+                    }
+                    set.stopsBase = stopsBase;
+                    set.stopsExpandSerial = renderer->expandSerial;
+                    stopsReady = true;
+                }
+            };
+            std::vector<Batch>& batches = renderer->batches;
+            auto compatibleBatch = [&]() -> bool {
+                return !batches.empty() && batches.back().pipeline == PipelineFill &&
+                    scissorsEqual(batches.back().scissor, batchScissor) &&
+                    batches.back().blend == (blend != 0) &&
+                    renderer->fillBatches[batches.back().start].drawEnd == renderer->fillDraws.size() &&
+                    renderer->fillBatches[batches.back().start].shader == 0;
+            };
+            uint32_t i = 0;
+            while (i < op.count) {
+                while (i < op.count && !compatibleBatch()) {
+                    emitGenericSpan(op.span + i);
+                    ++i;
+                }
+                if (i >= op.count) {
+                    break;
+                }
+                size_t batchIndex = batches.size() - 1;
+                uint32_t fillBatch = batches.back().start;
+                uint32_t remaining = op.count - i;
+                ensureVectorCapacity(renderer, renderer->fillDraws, renderer->fillDraws.size() + static_cast<size_t>(remaining) * 2);
+                if (gradCount) {
+                    ensureVectorCapacity(renderer, renderer->fillPaints, renderer->fillPaints.size() + static_cast<size_t>(remaining));
+                }
+                FillDrawGPU* drawBase = renderer->fillDraws.data();
+                FillDrawGPU* drawOut = drawBase + renderer->fillDraws.size();
+                FillPaintGPU* paintData = renderer->fillPaints.data();
+                uint32_t paintIdx = static_cast<uint32_t>(renderer->fillPaints.size());
+                bool mayHaveOpaque = renderer->fillBatches[fillBatch].mayHaveOpaque;
+                bool emittedAny = false;
+                bool hasUnion = false;
+                float uMinX = FLT_MAX, uMinY = FLT_MAX, uMaxX = -FLT_MAX, uMaxY = -FLT_MAX;
+                auto flushFast = [&]() {
+                    renderer->fillDraws.setSize(static_cast<size_t>(drawOut - drawBase));
+                    if (gradCount) {
+                        renderer->fillPaints.setSize(paintIdx);
+                    }
+                    FillBatchInfo& info = renderer->fillBatches[fillBatch];
+                    info.drawEnd = static_cast<uint32_t>(renderer->fillDraws.size());
+                    if (emittedAny) {
+                        info.paints = true;
+                    }
+                    if (mayHaveOpaque) {
+                        info.mayHaveOpaque = true;
+                    }
+                    if (hasUnion) {
+                        if (info.drawEnd - info.drawStart > 32) {
+                            std::vector<BatchRects>& rects = renderer->batchRects;
+                            if (rects.size() <= batchIndex) {
+                                ensureVectorCapacity(renderer, rects, batchIndex + 1);
+                                rects.resize(batchIndex + 1, BatchRects{{}, 0});
+                            }
+                            BatchRects& bounds = rects[batchIndex];
+                            float r0 = uMinX, r1 = uMinY, r2 = uMaxX, r3 = uMaxY;
+                            for (uint32_t r = 0; r < bounds.count; ++r) {
+                                r0 = std::min(r0, bounds.rects[r][0]);
+                                r1 = std::min(r1, bounds.rects[r][1]);
+                                r2 = std::max(r2, bounds.rects[r][2]);
+                                r3 = std::max(r3, bounds.rects[r][3]);
+                            }
+                            bounds.rects[0][0] = r0;
+                            bounds.rects[0][1] = r1;
+                            bounds.rects[0][2] = r2;
+                            bounds.rects[0][3] = r3;
+                            bounds.count = 1;
+                        } else {
+                            noteBatchRect(state, uMinX, uMinY, uMaxX, uMaxY);
+                        }
+                    }
+                };
+                for (; i < op.count; ++i) {
+                    const FillSpanRecord& span = spans[op.span + i];
+                    if (span.shadow || span.hasBrush || span.strokeAlignment != FillAlignCenter) {
+                        flushFast();
+                        emitGenericSpan(op.span + i);
+                        ++i;
+                        goto resumeOuter;
+                    }
+                    if (span.path >= pathCount) {
+                        continue;
+                    }
+                    const FillPathRecord& path = pathData[span.path];
+                    if (!path.segmentCount) {
+                        continue;
+                    }
+                    bool hasFill = false;
+                    const float* fillCol = nullptr;
+                    uint32_t fillPaint = 0;
+                    if (span.role == 3 && span.paletteIndex < explicitCount) {
+                        fillCol = palette + static_cast<size_t>(span.paletteIndex) * 4;
+                        if (fillCol[3] > 0.0f) {
+                            if (span.paint) {
+                                if (span.paint <= gradCount) {
+                                    const BxGuiMetalGradient& grad = gradData[span.paint - 1];
+                                    if (grad.kind == 4 || grad.kind == 5) {
+                                        flushFast();
+                                        emitGenericSpan(op.span + i);
+                                        ++i;
+                                        goto resumeOuter;
+                                    }
+                                    if (hasInv && grad.stopCount && grad.stopStart <= stopTotal &&
+                                            grad.stopCount <= stopTotal - grad.stopStart) {
+                                        if (grad.kind == 1) {
+                                            double dx = grad.end[0] - grad.start[0];
+                                            double dy = grad.end[1] - grad.start[1];
+                                            double len = dx * dx + dy * dy;
+                                            if (len > 0) {
+                                                ensureStops();
+                                                FillPaintGPU& p = paintData[paintIdx++];
+                                                p.a = fInv0; p.b = fInv1; p.c = fInv2; p.d = fInv3;
+                                                p.tx = static_cast<float>(inv4 - grad.start[0]);
+                                                p.ty = static_cast<float>(inv5 - grad.start[1]);
+                                                double invLen = 1.0 / len;
+                                                p.p0 = static_cast<float>(dx * invLen);
+                                                p.p1 = static_cast<float>(dy * invLen);
+                                                p.p2 = 0.0f; p.p3 = 0.0f;
+                                                p.kind = 1;
+                                                p.stopStart = stopsBase + grad.stopStart;
+                                                p.stopCount = grad.stopCount;
+                                                p.padding = 0;
+                                                p.paperX = 0.0f;
+                                                p.paperY = 0.0f;
+                                                bool trans = fillCol[3] < 1.0f || gradTrans[span.paint - 1] != 0;
+                                                fillPaint = paintIdx | (trans ? FillPaintTranslucent : 0u);
+                                                hasFill = true;
+                                            }
+                                        } else if (grad.kind == 2) {
+                                            ensureStops();
+                                            FillPaintGPU& p = paintData[paintIdx++];
+                                            p.a = fInv0; p.b = fInv1; p.c = fInv2; p.d = fInv3;
+                                            p.tx = static_cast<float>(inv4 - grad.start[0]);
+                                            p.ty = static_cast<float>(inv5 - grad.start[1]);
+                                            p.p0 = static_cast<float>(grad.end[0] - grad.start[0]);
+                                            p.p1 = static_cast<float>(grad.end[1] - grad.start[1]);
+                                            p.p2 = static_cast<float>(grad.startRadius);
+                                            p.p3 = static_cast<float>(grad.endRadius - grad.startRadius);
+                                            p.kind = 2;
+                                            p.stopStart = stopsBase + grad.stopStart;
+                                            p.stopCount = grad.stopCount;
+                                            p.padding = 0;
+                                            p.paperX = 0.0f;
+                                            p.paperY = 0.0f;
+                                            fillPaint = paintIdx | FillPaintTranslucent;
+                                            hasFill = true;
+                                        } else if (grad.kind == 3) {
+                                            ensureStops();
+                                            FillPaintGPU& p = paintData[paintIdx++];
+                                            p.a = fInv0; p.b = fInv1; p.c = fInv2; p.d = fInv3;
+                                            p.tx = static_cast<float>(inv4 - grad.start[0]);
+                                            p.ty = static_cast<float>(inv5 - grad.start[1]);
+                                            p.p0 = static_cast<float>(grad.startRadius);
+                                            p.p1 = 0.0f; p.p2 = 0.0f; p.p3 = 0.0f;
+                                            p.kind = 3;
+                                            p.stopStart = stopsBase + grad.stopStart;
+                                            p.stopCount = grad.stopCount;
+                                            p.padding = 0;
+                                            p.paperX = 0.0f;
+                                            p.paperY = 0.0f;
+                                            bool trans = fillCol[3] < 1.0f || gradTrans[span.paint - 1] != 0;
+                                            fillPaint = paintIdx | (trans ? FillPaintTranslucent : 0u);
+                                            hasFill = true;
+                                        }
+                                    }
+                                }
+                            } else {
+                                hasFill = true;
+                            }
+                        }
+                    }
+                    bool hasStroke = false;
+                    const float* strokeCol = nullptr;
+                    if (span.strokeRole == 3 && span.strokePaletteIndex < explicitCount &&
+                            span.strokeWidth > 0 && std::isfinite(span.strokeWidth)) {
+                        strokeCol = palette + static_cast<size_t>(span.strokePaletteIndex) * 4;
+                        hasStroke = strokeCol[3] > 0.0f;
+                    }
+                    if (!hasFill && !hasStroke) {
+                        continue;
+                    }
+                    double ox, oy;
+                    double db0, db1, db2, db3;
+                    if (axisAligned) {
+                        ox = sx * path.originX + tx;
+                        oy = sy * path.originY + ty;
+                        double wx = sx * path.width;
+                        double wy = sy * path.height;
+                        if (wx >= 0.0) { db0 = ox; db2 = ox + wx; } else { db0 = ox + wx; db2 = ox; }
+                        if (wy >= 0.0) { db1 = oy; db3 = oy + wy; } else { db1 = oy + wy; db3 = oy; }
+                    } else {
+                        ox = device[0] * path.originX + device[2] * path.originY + device[4];
+                        oy = device[1] * path.originX + device[3] * path.originY + device[5];
+                    }
+                    float ftx = static_cast<float>(ox);
+                    float fty = static_cast<float>(oy);
+                    if (hasFill) {
+                        if (!axisAligned) {
+                            double origin[6] = {device[0], device[1], device[2], device[3], ox, oy};
+                            double lb[4] = {0, 0, path.width, path.height};
+                            double tb[4];
+                            transformBounds(origin, lb, tb);
+                            db0 = tb[0]; db1 = tb[1]; db2 = tb[2]; db3 = tb[3];
+                        }
+                        double ext0 = std::max(db0, clamp0);
+                        double ext1 = std::max(db1, clamp1);
+                        double ext2 = std::min(db2, clamp2);
+                        double ext3 = std::min(db3, clamp3);
+                        if (ext0 < ext2 && ext1 < ext3) {
+                            float f0 = static_cast<float>(ext0);
+                            float f1 = static_cast<float>(ext1);
+                            float f2 = static_cast<float>(ext2);
+                            float f3 = static_cast<float>(ext3);
+                            if (f0 < uMinX) uMinX = f0;
+                            if (f1 < uMinY) uMinY = f1;
+                            if (f2 > uMaxX) uMaxX = f2;
+                            if (f3 > uMaxY) uMaxY = f3;
+                            hasUnion = true;
+                            if (!mayHaveOpaque && blend == 0 && curRoundedClip == 0 &&
+                                    fillCol[3] >= 1.0f && !(fillPaint & FillPaintTranslucent) &&
+                                    ext2 - ext0 >= 16.0 && ext3 - ext1 >= 16.0) {
+                                mayHaveOpaque = true;
+                            }
+                        }
+                        double e0 = std::max(db0 - 1.0, clamp0);
+                        double e1 = std::max(db1 - 1.0, clamp1);
+                        double e2 = std::min(db2 + 1.0, clamp2);
+                        double e3 = std::min(db3 + 1.0, clamp3);
+                        if (e0 < e2 && e1 < e3) {
+                            int32_t px0 = static_cast<int32_t>(floor(e0));
+                            int32_t py0 = static_cast<int32_t>(floor(e1));
+                            int32_t px1 = static_cast<int32_t>(ceil(e2));
+                            int32_t py1 = static_cast<int32_t>(ceil(e3));
+                            int32_t tileX = px0 >> 4;
+                            int32_t tileY = py0 >> 4;
+                            FillDrawGPU& out = *drawOut++;
+                            out.color[0] = fillCol[0];
+                            out.color[1] = fillCol[1];
+                            out.color[2] = fillCol[2];
+                            out.color[3] = fillCol[3];
+                            out.mask[0] = mask0;
+                            out.mask[1] = mask1;
+                            out.mask[2] = mask2;
+                            out.mask[3] = mask3;
+                            out.extent[0] = static_cast<float>(px0);
+                            out.extent[1] = static_cast<float>(py0);
+                            out.extent[2] = static_cast<float>(px1);
+                            out.extent[3] = static_cast<float>(py1);
+                            out.a = fa;
+                            out.b = fb;
+                            out.c = fc;
+                            out.d = fd;
+                            out.tx = ftx;
+                            out.ty = fty;
+                            out.segmentStart = path.segmentStart;
+                            out.segmentCount = path.segmentCount;
+                            out.segmentBase = 0;
+                            out.fillRule = static_cast<uint32_t>(span.fillRule) | blendBits;
+                            out.tileX = tileX;
+                            out.tileY = tileY;
+                            out.tileW = static_cast<uint32_t>(((px1 + 15) >> 4) - tileX);
+                            out.tileH = static_cast<uint32_t>(((py1 + 15) >> 4) - tileY);
+                            out.tileBase = 0;
+                            out.rowBase = 0;
+                            out.batch = fillBatch;
+                            out.roundedClip = curRoundedClip;
+                            out.halfWidth = 0.0f;
+                            out.strokeStyle = 0;
+                            out.clip = FillClipNone;
+                            out.coverage = curCoverage;
+                            out.dash = 0.0f;
+                            out.paint = fillPaint;
+                            emittedAny = true;
+                        }
+                    }
+                    if (hasStroke) {
+                        uint32_t cap = span.strokeCap != FillStrokeInherit ? span.strokeCap : 0u;
+                        uint32_t join = span.strokeJoin != FillStrokeInherit ? span.strokeJoin : 0u;
+                        double half = span.strokeWidth * 0.5;
+                        double outset = half * std::max(
+                            cap == FillStrokeCapSquare ? M_SQRT2 : 1.0,
+                            join == FillStrokeJoinMiter ? path.miterScale : 1.0
+                        );
+                        double sdb0, sdb1, sdb2, sdb3;
+                        if (axisAligned) {
+                            double outX = absSx * outset;
+                            double outY = absSy * outset;
+                            sdb0 = db0 - outX;
+                            sdb1 = db1 - outY;
+                            sdb2 = db2 + outX;
+                            sdb3 = db3 + outY;
+                        } else {
+                            double origin[6] = {device[0], device[1], device[2], device[3], ox, oy};
+                            double sb[4] = {-outset, -outset, path.width + outset, path.height + outset};
+                            double tb[4];
+                            transformBounds(origin, sb, tb);
+                            sdb0 = tb[0]; sdb1 = tb[1]; sdb2 = tb[2]; sdb3 = tb[3];
+                        }
+                        float strokeAlpha = strokeCol[3];
+                        float strokeDash = 0.0f;
+                        if (span.dash > 0 && std::isfinite(span.dash) && span.dash * 2.0 * devScale >= 1.0) {
+                            if (path.length <= span.dash * 2.0 * fillDashLimit) {
+                                strokeDash = static_cast<float>(span.dash);
+                            } else {
+                                double ext = cap == FillStrokeCapButt ? 0.0 : half * 2.0;
+                                strokeAlpha *= static_cast<float>(std::min(1.0, (span.dash + ext) / (span.dash * 2.0)));
+                            }
+                        }
+                        double ext0 = std::max(sdb0, clamp0);
+                        double ext1 = std::max(sdb1, clamp1);
+                        double ext2 = std::min(sdb2, clamp2);
+                        double ext3 = std::min(sdb3, clamp3);
+                        if (ext0 < ext2 && ext1 < ext3) {
+                            float f0 = static_cast<float>(ext0);
+                            float f1 = static_cast<float>(ext1);
+                            float f2 = static_cast<float>(ext2);
+                            float f3 = static_cast<float>(ext3);
+                            if (f0 < uMinX) uMinX = f0;
+                            if (f1 < uMinY) uMinY = f1;
+                            if (f2 > uMaxX) uMaxX = f2;
+                            if (f3 > uMaxY) uMaxY = f3;
+                            hasUnion = true;
+                            if (!mayHaveOpaque && blend == 0 && curRoundedClip == 0 &&
+                                    strokeAlpha >= 1.0f &&
+                                    ext2 - ext0 >= 16.0 && ext3 - ext1 >= 16.0 &&
+                                    half * 2.0 * colMax >= 16.0) {
+                                mayHaveOpaque = true;
+                            }
+                        }
+                        double e0 = std::max(sdb0 - 1.0, clamp0);
+                        double e1 = std::max(sdb1 - 1.0, clamp1);
+                        double e2 = std::min(sdb2 + 1.0, clamp2);
+                        double e3 = std::min(sdb3 + 1.0, clamp3);
+                        if (e0 < e2 && e1 < e3) {
+                            int32_t px0 = static_cast<int32_t>(floor(e0));
+                            int32_t py0 = static_cast<int32_t>(floor(e1));
+                            int32_t px1 = static_cast<int32_t>(ceil(e2));
+                            int32_t py1 = static_cast<int32_t>(ceil(e3));
+                            int32_t tileX = px0 >> 4;
+                            int32_t tileY = py0 >> 4;
+                            FillDrawGPU& out = *drawOut++;
+                            out.color[0] = strokeCol[0];
+                            out.color[1] = strokeCol[1];
+                            out.color[2] = strokeCol[2];
+                            out.color[3] = strokeAlpha;
+                            out.mask[0] = mask0;
+                            out.mask[1] = mask1;
+                            out.mask[2] = mask2;
+                            out.mask[3] = mask3;
+                            out.extent[0] = static_cast<float>(px0);
+                            out.extent[1] = static_cast<float>(py0);
+                            out.extent[2] = static_cast<float>(px1);
+                            out.extent[3] = static_cast<float>(py1);
+                            out.a = fa;
+                            out.b = fb;
+                            out.c = fc;
+                            out.d = fd;
+                            out.tx = ftx;
+                            out.ty = fty;
+                            out.segmentStart = path.segmentStart;
+                            out.segmentCount = path.segmentCount;
+                            out.segmentBase = 0;
+                            out.fillRule = blendBits;
+                            out.tileX = tileX;
+                            out.tileY = tileY;
+                            out.tileW = static_cast<uint32_t>(((px1 + 15) >> 4) - tileX);
+                            out.tileH = static_cast<uint32_t>(((py1 + 15) >> 4) - tileY);
+                            out.tileBase = 0;
+                            out.rowBase = 0;
+                            out.batch = fillBatch;
+                            out.roundedClip = curRoundedClip;
+                            out.halfWidth = static_cast<float>(half);
+                            out.strokeStyle = cap | (join << 4);
+                            out.clip = FillClipNone;
+                            out.coverage = curCoverage;
+                            out.dash = strokeDash;
+                            out.paint = 0;
+                            emittedAny = true;
+                        }
+                    }
+                }
+                if (i >= op.count) {
+                    flushFast();
+                }
+                resumeOuter:;
+            }
+            state.coverageClip = coverage;
+            return;
+        }
+    }
+    if (op.count > 1 && renderer->fillDraws.size() + op.count > renderer->fillDraws.capacity()) {
+        ensureVectorCapacity(renderer, renderer->fillDraws, renderer->fillDraws.size() + op.count);
+    }
+    for (uint32_t i = 0; i < op.count; ++i) {
+        emitGenericSpan(op.span + i);
     }
     state.coverageClip = coverage;
 }
@@ -8652,9 +9988,12 @@ static bool inlinesTransformLayer(const MetalRenderer* renderer, const uint8_t* 
             if (!readPacketValue(cursor, end, op)) return false;
             if (op.slot >= renderer->chunkPaths.size()) return false;
             const FillGeometryRecord& geometry = renderer->chunkPaths[op.slot].geometry;
-            if (op.span >= geometry.spans.size()) return false;
-            const FillSpanRecord& span = geometry.spans[op.span];
-            if (span.shadow || span.brush) return false;
+            if (!op.count || op.span >= geometry.spans.size() ||
+                    op.count > geometry.spans.size() - op.span) return false;
+            for (uint32_t i = 0; i < op.count; ++i) {
+                const FillSpanRecord& span = geometry.spans[op.span + i];
+                if (span.shadow || span.hasBrush) return false;
+            }
         } else if (kind == PacketOpPushTranslate) {
             TranslateOp op;
             if (!readPacketValue(cursor, end, op)) return false;
@@ -8767,6 +10106,7 @@ static void mergeBatches(MetalRenderer* renderer) {
                     renderer->fillDraws[draw].batch = representative;
                 }
                 info.paints = info.paints || absorbed.paints;
+                info.mayHaveOpaque = info.mayHaveOpaque || absorbed.mayHaveOpaque;
                 heads[fillBatch] = UINT32_MAX - 1;
                 batches[member].count = 0;
             }
@@ -8821,12 +10161,16 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
     renderer->instances.clear();
     renderer->batches.clear();
     renderer->fillDraws.clear();
+    renderer->fillDrawsHaveSkipped = false;
+    ++renderer->expandSerial;
     renderer->fillPaints.clear();
     renderer->fillStops.clear();
     renderer->fillBatches.clear();
     renderer->brushDabs.clear();
     renderer->brushDraws.clear();
-    sweepBrushDabs(renderer);
+    if (!renderer->dabCache.empty()) {
+        sweepBrushDabs(renderer);
+    }
     renderer->layerCount = 0;
     renderer->layerOrder.clear();
     renderer->deferredLayers.clear();
@@ -9475,19 +10819,24 @@ static void fillCompactSegments(MetalRenderer* renderer) {
         renderer->fillDeadSegments * 2 < renderer->fillSegments.size()) {
         return;
     }
-    std::vector<FillSegmentGPU> compacted;
-    compacted.reserve(renderer->fillSegments.size() - renderer->fillDeadSegments);
+    PodBuffer<FillSegmentGPU>& compacted = renderer->fillCompactScratch;
+    compacted.clear();
+    size_t live = renderer->fillSegments.size() - renderer->fillDeadSegments;
+    if (compacted.capacity() < live) {
+        compacted.reserve(live);
+    }
     auto keep = [&](FillGeometryRecord& geometry) {
         if (!geometry.resident) {
             return;
         }
         for (FillPathRecord& path : geometry.paths) {
             uint32_t start = static_cast<uint32_t>(compacted.size());
-            compacted.insert(
-                compacted.end(),
-                renderer->fillSegments.begin() + path.segmentStart,
-                renderer->fillSegments.begin() + path.segmentStart + path.segmentCount
-            );
+            if (path.segmentCount) {
+                compacted.appendFrom(
+                    renderer->fillSegments.data() + path.segmentStart,
+                    path.segmentCount
+                );
+            }
             path.segmentStart = start;
         }
     };
@@ -9499,8 +10848,13 @@ static void fillCompactSegments(MetalRenderer* renderer) {
     }
     keep(renderer->unitRect);
     renderer->fillSegments.swap(compacted);
+    compacted.clear();
     renderer->fillDeadSegments = 0;
-    renderer->fillSegmentBuffer = nil;
+    if (renderer->fillSegmentPoolRotatedFrame != renderer->frameCount) {
+        renderer->fillSegmentPoolIndex = (renderer->fillSegmentPoolIndex + 1) % 3;
+        renderer->fillSegmentBuffer = renderer->fillSegmentPool[renderer->fillSegmentPoolIndex];
+        renderer->fillSegmentPoolRotatedFrame = renderer->frameCount;
+    }
     renderer->fillSegmentsUploaded = 0;
 }
 
@@ -9522,6 +10876,7 @@ static bool fillUploadSegments(MetalRenderer* renderer) {
         }
         memcpy(replacement.contents, renderer->fillSegments.data(), count * sizeof(FillSegmentGPU));
         renderer->fillSegmentBuffer = replacement;
+        renderer->fillSegmentPool[renderer->fillSegmentPoolIndex] = replacement;
         countAllocation(renderer);
     } else {
         size_t uploaded = renderer->fillSegmentsUploaded;
@@ -9634,74 +10989,110 @@ static bool fillPrepare(MetalRenderer* renderer, FrameStats& stats) {
     uint64_t tileTotal = 0;
     uint64_t rowTotal = 0;
     std::vector<uint32_t>& drawSlots = renderer->fillDrawSlots;
-    ensureVectorCapacity(renderer, drawSlots, drawCapacity);
-    drawSlots.assign(drawCapacity, UINT32_MAX);
+    bool needDrawSlots = !renderer->coverageClips.empty();
+    if (needDrawSlots) {
+        ensureVectorCapacity(renderer, drawSlots, drawCapacity);
+        drawSlots.assign(drawCapacity, UINT32_MAX);
+    } else {
+        drawSlots.clear();
+    }
     const std::vector<uint32_t>& order = renderer->fillOrder;
     bool ordered = order.size() == drawCapacity;
-    for (size_t position = 0; position < drawCapacity; ++position) {
-        size_t frameDraw = ordered ? order[position] : position;
-        const FrameFillDraw& source = renderer->fillDraws[frameDraw];
-        const MTLScissorRect& scissor = renderer->fillBatches[source.batch].scissor;
-        if (!scissor.width || !scissor.height) {
-            continue;
+    const FillDrawGPU* fillDrawsData = renderer->fillDraws.data();
+    const FillBatchInfo* fillBatchesData = renderer->fillBatches.data();
+    bool allFullScissor = true;
+    bool anyBlend = false;
+    NSUInteger fullW = static_cast<NSUInteger>(std::max(renderer->pixelWidth, 0));
+    NSUInteger fullH = static_cast<NSUInteger>(std::max(renderer->pixelHeight, 0));
+    for (size_t b = 0; b < batchCount; ++b) {
+        const MTLScissorRect& sc = fillBatchesData[b].scissor;
+        if (sc.x != 0 || sc.y != 0 || sc.width != fullW || sc.height != fullH) {
+            allFullScissor = false;
         }
-        double extent[4];
-        if (!fillDrawExtent(source, scissor, extent)) {
-            continue;
+        if (fillBatchesData[b].blend) {
+            anyBlend = true;
         }
-        const double* device = source.device;
-        double originX = device[0] * source.originX + device[2] * source.originY + device[4];
-        double originY = device[1] * source.originX + device[3] * source.originY + device[5];
-        int32_t tileX = static_cast<int32_t>(floor(extent[0] / 16));
-        int32_t tileY = static_cast<int32_t>(floor(extent[1] / 16));
-        uint32_t tileW = static_cast<uint32_t>(static_cast<int32_t>(ceil(extent[2] / 16)) - tileX);
-        uint32_t tileH = static_cast<uint32_t>(static_cast<int32_t>(ceil(extent[3] / 16)) - tileY);
-        FillDrawGPU& draw = draws[visible];
-        memcpy(draw.color, source.color, sizeof(draw.color));
-        memcpy(draw.mask, source.mask, sizeof(draw.mask));
-        if (source.blend) {
-            draw.extent[0] = static_cast<float>(tileX * 16);
-            draw.extent[1] = static_cast<float>(tileY * 16);
-            draw.extent[2] = static_cast<float>((tileX + static_cast<int32_t>(tileW)) * 16);
-            draw.extent[3] = static_cast<float>((tileY + static_cast<int32_t>(tileH)) * 16);
-        } else {
-            draw.extent[0] = static_cast<float>(floor(extent[0]));
-            draw.extent[1] = static_cast<float>(floor(extent[1]));
-            draw.extent[2] = static_cast<float>(ceil(extent[2]));
-            draw.extent[3] = static_cast<float>(ceil(extent[3]));
+    }
+    if (!ordered && !renderer->fillDrawsHaveSkipped && !needDrawSlots && allFullScissor && !anyBlend) {
+        for (size_t i = 0; i < drawCapacity; ++i) {
+            FillDrawGPU draw = fillDrawsData[i];
+            uint32_t segBase = static_cast<uint32_t>(segmentTotal);
+            uint32_t tBase = static_cast<uint32_t>(tileTotal);
+            uint32_t rBase = static_cast<uint32_t>(rowTotal);
+            draw.segmentBase = segBase;
+            draw.tileBase = tBase;
+            draw.rowBase = rBase;
+            draws[i] = draw;
+            segmentBases[i] = segBase;
+            tileBases[i] = tBase;
+            rowBases[i] = rBase;
+            segmentTotal += draw.segmentCount;
+            tileTotal += static_cast<uint64_t>(draw.tileW) * draw.tileH;
+            rowTotal += draw.tileH;
         }
-        draw.a = static_cast<float>(device[0]);
-        draw.b = static_cast<float>(device[1]);
-        draw.c = static_cast<float>(device[2]);
-        draw.d = static_cast<float>(device[3]);
-        draw.tx = static_cast<float>(originX);
-        draw.ty = static_cast<float>(originY);
-        draw.segmentStart = source.segmentStart;
-        draw.segmentCount = source.segmentCount;
-        draw.segmentBase = static_cast<uint32_t>(segmentTotal);
-        draw.fillRule = source.fillRule | (source.blend << 8);
-        draw.tileX = tileX;
-        draw.tileY = tileY;
-        draw.tileW = tileW;
-        draw.tileH = tileH;
-        draw.tileBase = static_cast<uint32_t>(tileTotal);
-        draw.rowBase = static_cast<uint32_t>(rowTotal);
-        draw.batch = source.batch;
-        draw.roundedClip = source.roundedClip;
-        draw.halfWidth = source.halfWidth;
-        draw.strokeStyle = source.strokeStyle;
-        draw.clip = source.clip;
-        draw.coverage = source.coverage;
-        draw.dash = source.dash;
-        draw.paint = source.paint;
-        segmentBases[visible] = static_cast<uint32_t>(segmentTotal);
-        tileBases[visible] = static_cast<uint32_t>(tileTotal);
-        rowBases[visible] = static_cast<uint32_t>(rowTotal);
-        segmentTotal += source.segmentCount;
-        tileTotal += static_cast<uint64_t>(tileW) * tileH;
-        rowTotal += tileH;
-        drawSlots[frameDraw] = visible;
-        ++visible;
+        visible = static_cast<uint32_t>(drawCapacity);
+    } else {
+        for (size_t position = 0; position < drawCapacity; ++position) {
+            size_t frameDraw = ordered ? order[position] : position;
+            FillDrawGPU draw = fillDrawsData[frameDraw];
+            if (!draw.tileW) {
+                continue;
+            }
+            const MTLScissorRect& sc = fillBatchesData[draw.batch].scissor;
+            if (!sc.width || !sc.height) {
+                continue;
+            }
+            int32_t sx0 = static_cast<int32_t>(sc.x);
+            int32_t sy0 = static_cast<int32_t>(sc.y);
+            int32_t sx1 = static_cast<int32_t>(sc.x + sc.width);
+            int32_t sy1 = static_cast<int32_t>(sc.y + sc.height);
+            int32_t px0 = static_cast<int32_t>(draw.extent[0]);
+            int32_t py0 = static_cast<int32_t>(draw.extent[1]);
+            int32_t px1 = static_cast<int32_t>(draw.extent[2]);
+            int32_t py1 = static_cast<int32_t>(draw.extent[3]);
+            if (px0 < sx0 || py0 < sy0 || px1 > sx1 || py1 > sy1) {
+                px0 = std::max(px0, sx0);
+                py0 = std::max(py0, sy0);
+                px1 = std::min(px1, sx1);
+                py1 = std::min(py1, sy1);
+                if (!(px0 < px1 && py0 < py1)) {
+                    continue;
+                }
+                int32_t tileX = px0 >> 4;
+                int32_t tileY = py0 >> 4;
+                draw.tileX = tileX;
+                draw.tileY = tileY;
+                draw.tileW = static_cast<uint32_t>(((px1 + 15) >> 4) - tileX);
+                draw.tileH = static_cast<uint32_t>(((py1 + 15) >> 4) - tileY);
+                draw.extent[0] = static_cast<float>(px0);
+                draw.extent[1] = static_cast<float>(py0);
+                draw.extent[2] = static_cast<float>(px1);
+                draw.extent[3] = static_cast<float>(py1);
+            }
+            if ((draw.fillRule >> 8) > 15) {
+                draw.extent[0] = static_cast<float>(draw.tileX * 16);
+                draw.extent[1] = static_cast<float>(draw.tileY * 16);
+                draw.extent[2] = static_cast<float>((draw.tileX + static_cast<int32_t>(draw.tileW)) * 16);
+                draw.extent[3] = static_cast<float>((draw.tileY + static_cast<int32_t>(draw.tileH)) * 16);
+            }
+            uint32_t segBase = static_cast<uint32_t>(segmentTotal);
+            uint32_t tBase = static_cast<uint32_t>(tileTotal);
+            uint32_t rBase = static_cast<uint32_t>(rowTotal);
+            draw.segmentBase = segBase;
+            draw.tileBase = tBase;
+            draw.rowBase = rBase;
+            draws[visible] = draw;
+            segmentBases[visible] = segBase;
+            tileBases[visible] = tBase;
+            rowBases[visible] = rBase;
+            segmentTotal += draw.segmentCount;
+            tileTotal += static_cast<uint64_t>(draw.tileW) * draw.tileH;
+            rowTotal += draw.tileH;
+            if (needDrawSlots) {
+                drawSlots[frameDraw] = visible;
+            }
+            ++visible;
+        }
     }
     if (!fillUploadCoverage(renderer, slot)) {
         return false;
@@ -9741,6 +11132,7 @@ static bool fillPrepare(MetalRenderer* renderer, FrameStats& stats) {
         !fillEnsureBuffer(renderer, renderer->fillGroupSums, groups * 4, gpu) ||
         !fillEnsureBuffer(renderer, renderer->fillGroupOpaque, groups * 4, gpu) ||
         !fillEnsureBuffer(renderer, renderer->fillTileKinds, static_cast<size_t>(tileTotal), gpu) ||
+        !fillEnsureBuffer(renderer, renderer->fillTileBounds, static_cast<size_t>(tileTotal) * 2, gpu) ||
         !fillEnsureBuffer(renderer, renderer->fillOccluders, static_cast<size_t>(cells) * 4, gpu) ||
         !fillEnsureBuffer(renderer, renderer->fillArgs, batchCount * 32, gpu) ||
         !fillEnsureBuffer(
@@ -9848,7 +11240,10 @@ static void fillEncodeCompute(MetalRenderer* renderer, id<MTLCommandBuffer> comm
     [encoder setBuffer:renderer->fillBackdrops offset:0 atIndex:4];
     [encoder setBuffer:renderer->fillTileKinds offset:0 atIndex:5];
     [encoder setBuffer:renderer->fillOccluders offset:0 atIndex:6];
+    [encoder setBuffer:renderer->fillStarts offset:0 atIndex:7];
+    [encoder setBuffer:renderer->fillPieces offset:0 atIndex:8];
     [encoder setBuffer:coverageBuffer(renderer) offset:0 atIndex:9];
+    [encoder setBuffer:renderer->fillTileBounds offset:0 atIndex:10];
     fillDispatch(encoder, kernels[FillKernelOcclude], params.tileCount);
 
     [encoder setBuffer:renderer->fillTileKinds offset:0 atIndex:3];
@@ -9952,23 +11347,39 @@ static void bindCoverageFragments(
     }
 }
 
+struct FillEncodeState {
+    bool vertexBound = false;
+    bool visibleBound = false;
+    bool depthTestBound = false;
+    __unsafe_unretained id<MTLRenderPipelineState> pipeline = nil;
+};
+
 static void encodeFillBatch(
     MetalRenderer* renderer,
     id<MTLRenderCommandEncoder> encoder,
     uint32_t batch,
-    const PassTarget& target
+    const PassTarget& target,
+    FillEncodeState& fillState,
+    uint32_t& drawCalls,
+    uint32_t& pipelineSwitches
 ) {
     const SurfacePipelines* surface = surfacePipelinesFor(renderer, target.format);
     if (!surface) {
         return;
     }
-    FillParamsGPU params = passFillParams(renderer, target);
-    FillSlot& slot = renderer->fillSlots[renderer->packetIndex];
-    uint32_t selection[2] = {batch, 1};
-    [encoder setVertexBytes:&params length:sizeof(params) atIndex:0];
-    [encoder setVertexBuffer:slot.draws offset:0 atIndex:1];
-    [encoder setVertexBuffer:renderer->fillTileDraws offset:0 atIndex:2];
-    [encoder setVertexBuffer:slot.ranges offset:0 atIndex:4];
+    if (!fillState.vertexBound) {
+        FillParamsGPU params = passFillParams(renderer, target);
+        FillSlot& slot = renderer->fillSlots[renderer->packetIndex];
+        [encoder setVertexBytes:&params length:sizeof(params) atIndex:0];
+        [encoder setVertexBuffer:slot.draws offset:0 atIndex:1];
+        [encoder setVertexBuffer:renderer->fillTileDraws offset:0 atIndex:2];
+        [encoder setVertexBuffer:slot.ranges offset:0 atIndex:4];
+        [encoder setVertexBuffer:renderer->fillTileBounds offset:0 atIndex:6];
+        fillState.vertexBound = true;
+        fillState.visibleBound = false;
+        fillState.depthTestBound = false;
+        fillState.pipeline = nil;
+    }
     const FillBatchInfo& info = renderer->fillBatches[batch];
     const FormatPipeline* custom = nullptr;
     if (info.shader) {
@@ -9978,33 +11389,69 @@ static void encodeFillBatch(
             : nullptr;
     }
     if (info.blend) {
-        selection[1] = 0;
-        [encoder setRenderPipelineState:custom ? custom->blend : surface->fillBlend];
-        [encoder setDepthStencilState:renderer->shared->depthTest];
-        [encoder setVertexBuffer:renderer->fillVisibleTiles offset:0 atIndex:3];
+        uint32_t selection[2] = {batch, 0};
+        id<MTLRenderPipelineState> targetPipeline = custom ? custom->blend : surface->fillBlend;
+        if (fillState.pipeline != targetPipeline) {
+            [encoder setRenderPipelineState:targetPipeline];
+            fillState.pipeline = targetPipeline;
+            ++pipelineSwitches;
+        }
+        if (!fillState.depthTestBound) {
+            [encoder setDepthStencilState:renderer->shared->depthTest];
+            fillState.depthTestBound = true;
+        }
+        if (!fillState.visibleBound) {
+            [encoder setVertexBuffer:renderer->fillVisibleTiles offset:0 atIndex:3];
+            fillState.visibleBound = true;
+        }
         [encoder setVertexBytes:selection length:sizeof(selection) atIndex:5];
         [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
                  indirectBuffer:renderer->fillArgs
            indirectBufferOffset:static_cast<NSUInteger>(batch) * 32];
-        [encoder setDepthStencilState:renderer->shared->depthNone];
+        ++drawCalls;
         return;
     }
-    [encoder setRenderPipelineState:surface->fillSolid];
-    [encoder setDepthStencilState:renderer->shared->depthWrite];
-    [encoder setVertexBuffer:renderer->fillOpaqueTiles offset:0 atIndex:3];
-    [encoder setVertexBytes:selection length:sizeof(selection) atIndex:5];
-    [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-             indirectBuffer:renderer->fillArgs
-       indirectBufferOffset:static_cast<NSUInteger>(batch) * 32 + 16];
-    selection[1] = 0;
-    [encoder setRenderPipelineState:custom ? custom->render : surface->fillRender];
-    [encoder setDepthStencilState:renderer->shared->depthTest];
-    [encoder setVertexBuffer:renderer->fillVisibleTiles offset:0 atIndex:3];
+    if (info.mayHaveOpaque) {
+        uint32_t selection[2] = {batch, 1};
+        if (fillState.pipeline != surface->fillSolid) {
+            [encoder setRenderPipelineState:surface->fillSolid];
+            fillState.pipeline = surface->fillSolid;
+            ++pipelineSwitches;
+        }
+        [encoder setDepthStencilState:renderer->shared->depthWrite];
+        fillState.depthTestBound = false;
+        [encoder setVertexBuffer:renderer->fillOpaqueTiles offset:0 atIndex:3];
+        fillState.visibleBound = false;
+        [encoder setVertexBytes:selection length:sizeof(selection) atIndex:5];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                 indirectBuffer:renderer->fillArgs
+           indirectBufferOffset:static_cast<NSUInteger>(batch) * 32 + 16];
+        ++drawCalls;
+    }
+    uint32_t selection[2] = {batch, 0};
+    id<MTLRenderPipelineState> targetPipeline = custom
+        ? custom->render
+        : (renderer->coverageClips.empty() && renderer->roundedClips.empty()
+            ? (renderer->fillPaints.empty() ? surface->fillRenderPlain : surface->fillRenderNoClips)
+            : surface->fillRender);
+    if (fillState.pipeline != targetPipeline) {
+        [encoder setRenderPipelineState:targetPipeline];
+        fillState.pipeline = targetPipeline;
+        ++pipelineSwitches;
+    }
+    if (!fillState.depthTestBound) {
+        [encoder setDepthStencilState:renderer->shared->depthTest];
+        fillState.depthTestBound = true;
+    }
+    if (!fillState.visibleBound) {
+        [encoder setVertexBuffer:renderer->fillVisibleTiles offset:0 atIndex:3];
+        fillState.visibleBound = true;
+    }
     [encoder setVertexBytes:selection length:sizeof(selection) atIndex:5];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
              indirectBuffer:renderer->fillArgs
        indirectBufferOffset:static_cast<NSUInteger>(batch) * 32];
-    [encoder setDepthStencilState:renderer->shared->depthNone];
+    ++drawCalls;
 }
 
 static bool encodeDabBatch(
@@ -10073,6 +11520,22 @@ static void encodeBatches(
     const MTLScissorRect* areas = target.areaCount ? target.areas : &target.area;
     size_t areaCount = target.areaCount ? std::min(target.areaCount, kMaxDamageAreas) : 1;
     uint32_t previousPipeline = UINT32_MAX;
+    FillEncodeState fillState = {};
+    MTLScissorRect currentScissor = {0, 0, 0, 0};
+    bool hasScissor = false;
+    auto leaveFillState = [&]() {
+        if (!fillState.vertexBound) {
+            return;
+        }
+        [encoder setDepthStencilState:renderer->shared->depthNone];
+        [encoder setVertexBytes:target.viewport length:sizeof(target.viewport) atIndex:0];
+        [encoder setVertexBuffer:instanceBuffer offset:0 atIndex:1];
+        fillState.vertexBound = false;
+        fillState.visibleBound = false;
+        fillState.depthTestBound = false;
+        fillState.pipeline = nil;
+        previousPipeline = UINT32_MAX;
+    };
     for (size_t index = 0; index < batchCount; ++index) {
         const Batch& batch = batches[index];
         if (!batch.count) {
@@ -10095,21 +11558,33 @@ static void encodeBatches(
         if (batch.pipeline == PipelineFill) {
             if (renderer->fillActive && renderer->fillBatches[batch.start].paints) {
                 for (size_t area = 0; area < scissorCount; ++area) {
-                    [encoder setScissorRect:scissors[area]];
-                    encodeFillBatch(renderer, encoder, batch.start, target);
-                    drawCalls += 2;
-                    pipelineSwitches += 2;
+                    if (!hasScissor || !scissorsEqual(currentScissor, scissors[area])) {
+                        [encoder setScissorRect:scissors[area]];
+                        currentScissor = scissors[area];
+                        hasScissor = true;
+                    }
+                    encodeFillBatch(
+                        renderer,
+                        encoder,
+                        batch.start,
+                        target,
+                        fillState,
+                        drawCalls,
+                        pipelineSwitches
+                    );
                 }
-                previousPipeline = UINT32_MAX;
-                [encoder setVertexBytes:target.viewport length:sizeof(target.viewport) atIndex:0];
-                [encoder setVertexBuffer:instanceBuffer offset:0 atIndex:1];
             }
             continue;
         }
+        leaveFillState();
         if (batch.pipeline == PipelineDab) {
             bool drew = false;
             for (size_t area = 0; area < scissorCount; ++area) {
-                [encoder setScissorRect:scissors[area]];
+                if (!hasScissor || !scissorsEqual(currentScissor, scissors[area])) {
+                    [encoder setScissorRect:scissors[area]];
+                    currentScissor = scissors[area];
+                    hasScissor = true;
+                }
                 if (encodeDabBatch(renderer, encoder, batch, target)) {
                     ++drawCalls;
                     ++pipelineSwitches;
@@ -10148,7 +11623,11 @@ static void encodeBatches(
         }
         [encoder setVertexBufferOffset:batch.start * sizeof(Instance) atIndex:1];
         for (size_t area = 0; area < scissorCount; ++area) {
-            [encoder setScissorRect:scissors[area]];
+            if (!hasScissor || !scissorsEqual(currentScissor, scissors[area])) {
+                [encoder setScissorRect:scissors[area]];
+                currentScissor = scissors[area];
+                hasScissor = true;
+            }
             [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
                         vertexStart:0
                         vertexCount:4
@@ -10156,6 +11635,7 @@ static void encodeBatches(
             ++drawCalls;
         }
     }
+    leaveFillState();
 }
 
 static MTLScissorRect intersectScissors(
@@ -13378,6 +14858,70 @@ static void popItemState(MetalRenderer* renderer, const BxGuiMetalState* states)
     }
 }
 
+static void pushItemState(
+    MetalRenderer* renderer,
+    const BxGuiMetalState* states,
+    uint32_t next,
+    const ChunkPathSet* pathSet,
+    uint32_t pathSlot
+) {
+    const BxGuiMetalState& state = states[next];
+    if (state.kind == StateClip) {
+        ClipOp op = {
+            static_cast<float>(state.rect[0]),
+            static_cast<float>(state.rect[1]),
+            static_cast<float>(state.rect[2]),
+            static_cast<float>(state.rect[3]),
+        };
+        appendPacketOp(renderer, PacketOpPushClip, op);
+    } else if (state.kind == StateClipOutline || state.kind == StateClipPath) {
+        PathClipOp op = {
+            pathSlot,
+            pathSet->serial,
+            chunkStatePath(pathSet, next),
+            state.kind == StateClipPath && state.fillRule ? 1u : 0u,
+        };
+        appendPacketOp(renderer, PacketOpPushPathClip, op);
+    } else if (state.kind == StateClipMask) {
+        MaskClipOp op = {
+            state.serial,
+            static_cast<float>(state.rect[0]),
+            static_cast<float>(state.rect[1]),
+            static_cast<float>(state.rect[2]),
+            static_cast<float>(state.rect[3]),
+        };
+        appendPacketOp(renderer, PacketOpPushMaskClip, op);
+    } else if (state.kind == StateMaskLayer) {
+        std::vector<uint32_t>& ids = renderer->stateMaskIds;
+        if (next >= ids.size()) {
+            ensureVectorCapacity(renderer, ids, static_cast<size_t>(next) + 1);
+            ids.resize(static_cast<size_t>(next) + 1, 0);
+        }
+        MaskOp op = {++renderer->maskSequence};
+        ids[next] = op.id;
+        appendPacketOp(renderer, PacketOpPushMaskLayer, op);
+    } else if (state.kind == StateClipLayerMask) {
+        const std::vector<uint32_t>& ids = renderer->stateMaskIds;
+        MaskOp op = {state.source < ids.size() ? ids[state.source] : 0u};
+        appendPacketOp(renderer, PacketOpPushLayerMaskClip, op);
+    } else if (state.kind == StateLayer) {
+        LayerOp op = {static_cast<float>(state.opacity)};
+        appendPacketOp(renderer, PacketOpPushLayer, op);
+    } else if (state.kind == StateBlur) {
+        BlurLayerOp op = {static_cast<float>(state.radius)};
+        appendPacketOp(renderer, PacketOpPushBlurLayer, op);
+    } else if (state.kind == StateBlend) {
+        BlendOp op = {static_cast<uint32_t>(std::max(state.blend, 0))};
+        appendPacketOp(renderer, PacketOpPushBlend, op);
+    } else {
+        TransformOp op;
+        memcpy(op.matrix, state.matrix, sizeof(op.matrix));
+        appendPacketOp(renderer, state.kind == StateContent ? PacketOpPushContentTransform : PacketOpPushTransform, op);
+    }
+    ensureVectorCapacity(renderer, renderer->stateStack, renderer->stateStack.size() + 1);
+    renderer->stateStack.push_back(next);
+}
+
 static void syncItemState(
     MetalRenderer* renderer,
     const BxGuiMetalState* states,
@@ -13386,7 +14930,16 @@ static void syncItemState(
     uint32_t pathSlot
 ) {
     std::vector<uint32_t>& stack = renderer->stateStack;
-    if (stack.empty() ? target == 0 : stack.back() == target) {
+    uint32_t current = stack.empty() ? 0 : stack.back();
+    if (current == target) {
+        return;
+    }
+    if (current != 0 && states[current].parent == target) {
+        popItemState(renderer, states);
+        return;
+    }
+    if (target != 0 && states[target].parent == current) {
+        pushItemState(renderer, states, target, pathSet, pathSlot);
         return;
     }
     std::vector<uint32_t>& path = renderer->statePath;
@@ -13405,61 +14958,7 @@ static void syncItemState(
     }
     while (stack.size() < path.size()) {
         uint32_t next = path[path.size() - 1 - stack.size()];
-        const BxGuiMetalState& state = states[next];
-        if (state.kind == StateClip) {
-            ClipOp op = {
-                static_cast<float>(state.rect[0]),
-                static_cast<float>(state.rect[1]),
-                static_cast<float>(state.rect[2]),
-                static_cast<float>(state.rect[3]),
-            };
-            appendPacketOp(renderer, PacketOpPushClip, op);
-        } else if (state.kind == StateClipOutline || state.kind == StateClipPath) {
-            PathClipOp op = {
-                pathSlot,
-                pathSet->serial,
-                chunkStatePath(pathSet, next),
-                state.kind == StateClipPath && state.fillRule ? 1u : 0u,
-            };
-            appendPacketOp(renderer, PacketOpPushPathClip, op);
-        } else if (state.kind == StateClipMask) {
-            MaskClipOp op = {
-                state.serial,
-                static_cast<float>(state.rect[0]),
-                static_cast<float>(state.rect[1]),
-                static_cast<float>(state.rect[2]),
-                static_cast<float>(state.rect[3]),
-            };
-            appendPacketOp(renderer, PacketOpPushMaskClip, op);
-        } else if (state.kind == StateMaskLayer) {
-            std::vector<uint32_t>& ids = renderer->stateMaskIds;
-            if (next >= ids.size()) {
-                ensureVectorCapacity(renderer, ids, static_cast<size_t>(next) + 1);
-                ids.resize(static_cast<size_t>(next) + 1, 0);
-            }
-            MaskOp op = {++renderer->maskSequence};
-            ids[next] = op.id;
-            appendPacketOp(renderer, PacketOpPushMaskLayer, op);
-        } else if (state.kind == StateClipLayerMask) {
-            const std::vector<uint32_t>& ids = renderer->stateMaskIds;
-            MaskOp op = {state.source < ids.size() ? ids[state.source] : 0u};
-            appendPacketOp(renderer, PacketOpPushLayerMaskClip, op);
-        } else if (state.kind == StateLayer) {
-            LayerOp op = {static_cast<float>(state.opacity)};
-            appendPacketOp(renderer, PacketOpPushLayer, op);
-        } else if (state.kind == StateBlur) {
-            BlurLayerOp op = {static_cast<float>(state.radius)};
-            appendPacketOp(renderer, PacketOpPushBlurLayer, op);
-        } else if (state.kind == StateBlend) {
-            BlendOp op = {static_cast<uint32_t>(std::max(state.blend, 0))};
-            appendPacketOp(renderer, PacketOpPushBlend, op);
-        } else {
-            TransformOp op;
-            memcpy(op.matrix, state.matrix, sizeof(op.matrix));
-            appendPacketOp(renderer, state.kind == StateContent ? PacketOpPushContentTransform : PacketOpPushTransform, op);
-        }
-        ensureVectorCapacity(renderer, stack, stack.size() + 1);
-        stack.push_back(next);
+        pushItemState(renderer, states, next, pathSet, pathSlot);
     }
 }
 
@@ -13702,8 +15201,9 @@ extern "C" bool brixGuiMetalPacketAppendItems(
             PathOp op = {};
             op.slot = pathSlot;
             op.serial = pathSerial;
+            op.count = 1;
             if (order) {
-                const std::vector<uint32_t>& spanItems = chunkPathSet->spanItems;
+                const PodBuffer<uint32_t>& spanItems = chunkPathSet->spanItems;
                 auto found = std::lower_bound(spanItems.begin(), spanItems.end(), static_cast<uint32_t>(index));
                 op.span = found != spanItems.end() && *found == index
                     ? static_cast<uint32_t>(found - spanItems.begin())
@@ -13717,6 +15217,32 @@ extern "C" bool brixGuiMetalPacketAppendItems(
                 op.contentMask[1] = static_cast<float>(clip.y);
                 op.contentMask[2] = static_cast<float>(clip.x + clip.width);
                 op.contentMask[3] = static_cast<float>(clip.y + clip.height);
+            } else if (!(item.flags & 1u) && op.span != UINT32_MAX && chunkPathSet) {
+                uint32_t curState = hasStates ? itemStates[index] : 0;
+                const uint32_t* spanItemData = chunkPathSet->spanItems.data();
+                size_t spanItemCount = chunkPathSet->spanItems.size();
+                while (position + 1 < visible) {
+                    uint64_t nextIndex = order ? order[position + 1] : position + 1;
+                    if (nextIndex >= count) {
+                        break;
+                    }
+                    const BxGuiMetalDisplayItem& nextItem = items[nextIndex];
+                    if (nextItem.kind != 8 || (nextItem.flags & 1u)) {
+                        break;
+                    }
+                    if (hasStates && itemStates[nextIndex] != curState) {
+                        break;
+                    }
+                    uint32_t expectedSpan = op.span + op.count;
+                    if (order && (expectedSpan >= spanItemCount || spanItemData[expectedSpan] != nextIndex)) {
+                        break;
+                    }
+                    ++op.count;
+                    ++position;
+                    if (!order) {
+                        ++pathSpan;
+                    }
+                }
             }
             appendPacketOp(renderer, PacketOpPath, op);
         } else if (item.kind == 10) {
@@ -15284,7 +16810,7 @@ static void fillFinishSubpath(MetalRenderer* renderer, bool closed) {
 }
 
 static void fillAbandonBuild(MetalRenderer* renderer) {
-    releaseBrushDabs(renderer->fillBuild.spans);
+    releaseBrushDabs(renderer->fillBuild);
     for (const FillPathRecord& path : renderer->fillBuild.paths) {
         renderer->fillDeadSegments += path.segmentCount;
     }
@@ -15454,74 +16980,513 @@ static void fillAppendVerbs(
     }
 }
 
-static uint32_t fillEndPath(MetalRenderer* renderer) {
+static double fillSegmentLengthApprox(const FillPendingSegment& segment) {
+    const double* p = segment.p;
+    double chord = fillDistance(p[6] - p[0], p[7] - p[1]);
+    if ((segment.kind & FillSegmentKindMask) == 0) {
+        return chord;
+    }
+    double polygon = fillDistance(p[2] - p[0], p[3] - p[1]) +
+        fillDistance(p[4] - p[2], p[5] - p[3]) +
+        fillDistance(p[6] - p[4], p[7] - p[5]);
+    return (chord + polygon) * 0.5;
+}
+
+enum : uint32_t {
+    FillPathNeedMiter = 1u,
+    FillPathNeedLength = 2u,
+    FillPathNeedApproxLength = 4u,
+    FillPathNeedArea = 8u,
+    FillPathAll = FillPathNeedMiter | FillPathNeedLength | FillPathNeedArea,
+};
+
+static bool fillAppendChunkPathDirect(
+    MetalRenderer* renderer,
+    const uint8_t* verbs,
+    int64_t count,
+    const double* coords,
+    uint64_t coordLimit,
+    bool closePath,
+    uint32_t& outPath
+) {
+    FillPendingSegment local[34];
+    size_t localCount = 0;
+    double curX = 0, curY = 0;
+    double subX = 0, subY = 0;
+    size_t subFirst = 0;
+    bool hasSub = false;
+    double minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
+    auto finishSub = [&](bool closed) __attribute__((always_inline)) {
+        if (!hasSub) {
+            return;
+        }
+        if (curX != subX || curY != subY) {
+            double reach = fillClosingSnap * std::max(1.0, std::max(std::fabs(subX), std::fabs(subY)));
+            if (localCount > subFirst &&
+                    std::fabs(curX - subX) <= reach &&
+                    std::fabs(curY - subY) <= reach) {
+                local[localCount - 1].p[6] = subX;
+                local[localCount - 1].p[7] = subY;
+                if (subX < minX) minX = subX;
+                if (subX > maxX) maxX = subX;
+                if (subY < minY) minY = subY;
+                if (subY > maxY) maxY = subY;
+            } else if (curX != subX || curY != subY) {
+                FillPendingSegment& seg = local[localCount++];
+                seg.p[0] = curX; seg.p[1] = curY;
+                seg.p[2] = 0; seg.p[3] = 0;
+                seg.p[4] = 0; seg.p[5] = 0;
+                seg.p[6] = subX; seg.p[7] = subY;
+                seg.kind = closed ? 0u : static_cast<uint32_t>(FillSegmentImplicit);
+                seg.link = 0;
+                if (curX < minX) minX = curX;
+                if (curX > maxX) maxX = curX;
+                if (subX < minX) minX = subX;
+                if (subX > maxX) maxX = subX;
+                if (curY < minY) minY = curY;
+                if (curY > maxY) maxY = curY;
+                if (subY < minY) minY = subY;
+                if (subY > maxY) maxY = subY;
+            }
+        }
+        size_t last = localCount;
+        while (last > subFirst && (local[last - 1].kind & FillSegmentImplicit)) {
+            --last;
+        }
+        if (last > subFirst) {
+            local[subFirst].kind |= FillSegmentStart;
+            local[last - 1].kind |= FillSegmentEnd;
+            if (closed) {
+                local[subFirst].kind |= FillSegmentClosed;
+                local[last - 1].kind |= FillSegmentClosed;
+                local[last - 1].link = static_cast<uint32_t>(last - 1 - subFirst);
+            }
+        }
+        curX = subX;
+        curY = subY;
+        hasSub = false;
+    };
+    uint64_t coord = 0;
+    for (int64_t index = 0; index < count; ++index) {
+        switch (verbs[index]) {
+        case 0:
+            if (coord + 2 > coordLimit) {
+                return false;
+            }
+            finishSub(false);
+            curX = coords[coord];
+            curY = coords[coord + 1];
+            subX = curX;
+            subY = curY;
+            subFirst = localCount;
+            hasSub = true;
+            coord += 2;
+            break;
+        case 1: {
+            if (coord + 2 > coordLimit) {
+                return false;
+            }
+            double x1 = coords[coord];
+            double y1 = coords[coord + 1];
+            if (!hasSub) {
+                subX = curX; subY = curY; subFirst = localCount; hasSub = true;
+            }
+            if (x1 != curX || y1 != curY) {
+                FillPendingSegment& seg = local[localCount++];
+                seg.p[0] = curX; seg.p[1] = curY;
+                seg.p[2] = 0; seg.p[3] = 0;
+                seg.p[4] = 0; seg.p[5] = 0;
+                seg.p[6] = x1; seg.p[7] = y1;
+                seg.kind = 0;
+                seg.link = 0;
+                if (curX < minX) minX = curX;
+                if (curX > maxX) maxX = curX;
+                if (x1 < minX) minX = x1;
+                if (x1 > maxX) maxX = x1;
+                if (curY < minY) minY = curY;
+                if (curY > maxY) maxY = curY;
+                if (y1 < minY) minY = y1;
+                if (y1 > maxY) maxY = y1;
+            }
+            curX = x1;
+            curY = y1;
+            coord += 2;
+            break;
+        }
+        case 2: {
+            if (coord + 6 > coordLimit) {
+                return false;
+            }
+            double x1 = coords[coord], y1 = coords[coord + 1];
+            double x2 = coords[coord + 2], y2 = coords[coord + 3];
+            double x3 = coords[coord + 4], y3 = coords[coord + 5];
+            if (!hasSub) {
+                subX = curX; subY = curY; subFirst = localCount; hasSub = true;
+            }
+            if (x1 != curX || y1 != curY || x2 != curX || y2 != curY || x3 != curX || y3 != curY) {
+                FillPendingSegment& seg = local[localCount++];
+                seg.p[0] = curX; seg.p[1] = curY;
+                seg.p[2] = x1; seg.p[3] = y1;
+                seg.p[4] = x2; seg.p[5] = y2;
+                seg.p[6] = x3; seg.p[7] = y3;
+                seg.kind = 1;
+                seg.link = 0;
+                double loX = std::min(std::min(curX, x1), std::min(x2, x3));
+                double hiX = std::max(std::max(curX, x1), std::max(x2, x3));
+                double loY = std::min(std::min(curY, y1), std::min(y2, y3));
+                double hiY = std::max(std::max(curY, y1), std::max(y2, y3));
+                if (loX < minX) minX = loX;
+                if (hiX > maxX) maxX = hiX;
+                if (loY < minY) minY = loY;
+                if (hiY > maxY) maxY = hiY;
+            }
+            curX = x3;
+            curY = y3;
+            coord += 6;
+            break;
+        }
+        case 3:
+            finishSub(true);
+            break;
+        default:
+            break;
+        }
+    }
+    finishSub(closePath);
+    FillPathRecord path;
+    size_t segStart = renderer->fillSegments.size();
+    path.segmentStart = static_cast<uint32_t>(segStart);
+    path.segmentCount = static_cast<uint32_t>(localCount);
+    path.miterScale = 1.0;
+    path.area = 0;
+    if (!localCount) {
+        path.originX = 0;
+        path.originY = 0;
+        path.width = 0;
+        path.height = 0;
+    } else {
+        path.originX = minX;
+        path.originY = minY;
+        path.width = maxX - minX;
+        path.height = maxY - minY;
+        if (segStart + localCount > renderer->fillSegments.capacity()) {
+            ensureVectorCapacity(renderer, renderer->fillSegments, segStart + localCount);
+        }
+        FillSegmentGPU* dst = renderer->fillSegments.growUninit(localCount);
+        for (size_t i = 0; i < localCount; ++i) {
+            const FillPendingSegment& pending = local[i];
+            FillSegmentGPU& segment = dst[i];
+            const double* p = pending.p;
+            if ((pending.kind & FillSegmentKindMask) == 0) {
+                segment.p[0] = static_cast<float>(p[0] - minX);
+                segment.p[1] = static_cast<float>(p[1] - minY);
+                segment.p[2] = 0;
+                segment.p[3] = 0;
+                segment.p[4] = 0;
+                segment.p[5] = 0;
+                segment.p[6] = static_cast<float>(p[6] - minX);
+                segment.p[7] = static_cast<float>(p[7] - minY);
+            } else {
+                segment.p[0] = static_cast<float>(p[0] - minX);
+                segment.p[1] = static_cast<float>(p[1] - minY);
+                segment.p[2] = static_cast<float>(p[2] - minX);
+                segment.p[3] = static_cast<float>(p[3] - minY);
+                segment.p[4] = static_cast<float>(p[4] - minX);
+                segment.p[5] = static_cast<float>(p[5] - minY);
+                segment.p[6] = static_cast<float>(p[6] - minX);
+                segment.p[7] = static_cast<float>(p[7] - minY);
+            }
+            segment.kind = pending.kind;
+            segment.link = pending.link;
+            segment.arcStart = 0;
+            segment.arcEnd = 0;
+        }
+    }
+    *renderer->fillBuild.paths.growUninit(1) = path;
+    outPath = static_cast<uint32_t>(renderer->fillBuild.paths.size() - 1);
+    return true;
+}
+
+static bool fillAppendChunkShapeDirect(
+    MetalRenderer* renderer,
+    const BxGuiMetalDisplayItem& item,
+    bool oval,
+    uint32_t& outPath
+) {
+    double left = std::min<double>(item.x, item.x + item.width);
+    double top = std::min<double>(item.y, item.y + item.height);
+    double right = std::max<double>(item.x, item.x + item.width);
+    double bottom = std::max<double>(item.y, item.y + item.height);
+    double w = right - left;
+    double h = bottom - top;
+    if (!(w > 0.0 && h > 0.0)) {
+        return false;
+    }
+    size_t segStart = renderer->fillSegments.size();
+    if (segStart + 4 > renderer->fillSegments.capacity()) {
+        ensureVectorCapacity(renderer, renderer->fillSegments, segStart + 4);
+    }
+    FillSegmentGPU* dst = renderer->fillSegments.growUninit(4);
+    float fw = static_cast<float>(w);
+    float fh = static_cast<float>(h);
+    if (!oval) {
+        dst[0] = {{0, 0, 0, 0, 0, 0, fw, 0}, FillSegmentStart | FillSegmentClosed, 0, 0, 0};
+        dst[1] = {{fw, 0, 0, 0, 0, 0, fw, fh}, 0, 0, 0, 0};
+        dst[2] = {{fw, fh, 0, 0, 0, 0, 0, fh}, 0, 0, 0, 0};
+        dst[3] = {{0, fh, 0, 0, 0, 0, 0, 0}, FillSegmentEnd | FillSegmentClosed, 3, 0, 0};
+    } else {
+        const double kappa = 0.5522847498307936;
+        double rx = w * 0.5;
+        double ry = h * 0.5;
+        double hx = rx * kappa;
+        double hy = ry * kappa;
+        float cx = static_cast<float>(rx);
+        float cy = static_cast<float>(ry);
+        float cxp = static_cast<float>(rx + hx);
+        float cxm = static_cast<float>(rx - hx);
+        float cyp = static_cast<float>(ry + hy);
+        float cym = static_cast<float>(ry - hy);
+        dst[0] = {{fw, cy, fw, cyp, cxp, fh, cx, fh}, 1u | FillSegmentStart | FillSegmentClosed, 0, 0, 0};
+        dst[1] = {{cx, fh, cxm, fh, 0, cyp, 0, cy}, 1u, 0, 0, 0};
+        dst[2] = {{0, cy, 0, cym, cxm, 0, cx, 0}, 1u, 0, 0, 0};
+        dst[3] = {{cx, 0, cxp, 0, fw, cym, fw, cy}, 1u | FillSegmentEnd | FillSegmentClosed, 3, 0, 0};
+    }
+    FillPathRecord path;
+    path.segmentStart = static_cast<uint32_t>(segStart);
+    path.segmentCount = 4;
+    path.originX = left;
+    path.originY = top;
+    path.width = w;
+    path.height = h;
+    path.miterScale = 1.0;
+    path.length = 0;
+    path.area = 0;
+    *renderer->fillBuild.paths.growUninit(1) = path;
+    outPath = static_cast<uint32_t>(renderer->fillBuild.paths.size() - 1);
+    return true;
+}
+
+static bool fillAppendVerbsChecked(
+    MetalRenderer* renderer,
+    const uint8_t* verbs,
+    int64_t count,
+    const double* coords,
+    uint64_t coordLimit
+) {
+    double* current = renderer->fillCurrent;
+    uint64_t coord = 0;
+    for (int64_t index = 0; index < count; ++index) {
+        switch (verbs[index]) {
+        case 0:
+            if (coord + 2 > coordLimit) {
+                return false;
+            }
+            fillFinishSubpath(renderer, false);
+            current[0] = coords[coord];
+            current[1] = coords[coord + 1];
+            fillBeginSubpath(renderer);
+            coord += 2;
+            break;
+        case 1: {
+            if (coord + 2 > coordLimit) {
+                return false;
+            }
+            double points[8] = {
+                current[0], current[1], 0, 0, 0, 0, coords[coord], coords[coord + 1],
+            };
+            fillPushSegment(renderer, 0, points);
+            current[0] = coords[coord];
+            current[1] = coords[coord + 1];
+            coord += 2;
+            break;
+        }
+        case 2: {
+            if (coord + 6 > coordLimit) {
+                return false;
+            }
+            double points[8] = {
+                current[0], current[1],
+                coords[coord], coords[coord + 1],
+                coords[coord + 2], coords[coord + 3],
+                coords[coord + 4], coords[coord + 5],
+            };
+            fillPushSegment(renderer, 1, points);
+            current[0] = coords[coord + 4];
+            current[1] = coords[coord + 5];
+            coord += 6;
+            break;
+        }
+        case 3:
+            fillFinishSubpath(renderer, true);
+            break;
+        default:
+            break;
+        }
+    }
+    return true;
+}
+
+static uint32_t fillEndPath(MetalRenderer* renderer, uint32_t flags = FillPathAll) {
     fillFinishSubpath(renderer, false);
     FillPathRecord path;
-    path.segmentStart = static_cast<uint32_t>(renderer->fillSegments.size());
-    path.segmentCount = static_cast<uint32_t>(renderer->fillPending.size());
-    path.miterScale = fillMiterScale(renderer->fillPending);
+    size_t segStart = renderer->fillSegments.size();
+    size_t pendingCount = renderer->fillPending.size();
+    path.segmentStart = static_cast<uint32_t>(segStart);
+    path.segmentCount = static_cast<uint32_t>(pendingCount);
+    if (!flags) {
+        path.miterScale = 1.0;
+        path.area = 0;
+        if (!pendingCount) {
+            path.originX = 0;
+            path.originY = 0;
+            path.width = 0;
+            path.height = 0;
+        } else {
+            const FillPendingSegment* src = renderer->fillPending.data();
+            double minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
+            for (size_t i = 0; i < pendingCount; ++i) {
+                const double* p = src[i].p;
+                if ((src[i].kind & FillSegmentKindMask) == 0) {
+                    minX = std::min(minX, std::min(p[0], p[6]));
+                    minY = std::min(minY, std::min(p[1], p[7]));
+                    maxX = std::max(maxX, std::max(p[0], p[6]));
+                    maxY = std::max(maxY, std::max(p[1], p[7]));
+                } else {
+                    minX = std::min(minX, std::min(std::min(p[0], p[2]), std::min(p[4], p[6])));
+                    minY = std::min(minY, std::min(std::min(p[1], p[3]), std::min(p[5], p[7])));
+                    maxX = std::max(maxX, std::max(std::max(p[0], p[2]), std::max(p[4], p[6])));
+                    maxY = std::max(maxY, std::max(std::max(p[1], p[3]), std::max(p[5], p[7])));
+                }
+            }
+            path.originX = minX;
+            path.originY = minY;
+            path.width = maxX - minX;
+            path.height = maxY - minY;
+            if (segStart + pendingCount > renderer->fillSegments.capacity()) {
+                ensureVectorCapacity(renderer, renderer->fillSegments, segStart + pendingCount);
+            }
+            FillSegmentGPU* dst = renderer->fillSegments.growUninit(pendingCount);
+            for (size_t i = 0; i < pendingCount; ++i) {
+                const FillPendingSegment& pending = src[i];
+                FillSegmentGPU& segment = dst[i];
+                const double* p = pending.p;
+                if ((pending.kind & FillSegmentKindMask) == 0) {
+                    segment.p[0] = static_cast<float>(p[0] - minX);
+                    segment.p[1] = static_cast<float>(p[1] - minY);
+                    segment.p[2] = 0;
+                    segment.p[3] = 0;
+                    segment.p[4] = 0;
+                    segment.p[5] = 0;
+                    segment.p[6] = static_cast<float>(p[6] - minX);
+                    segment.p[7] = static_cast<float>(p[7] - minY);
+                } else {
+                    segment.p[0] = static_cast<float>(p[0] - minX);
+                    segment.p[1] = static_cast<float>(p[1] - minY);
+                    segment.p[2] = static_cast<float>(p[2] - minX);
+                    segment.p[3] = static_cast<float>(p[3] - minY);
+                    segment.p[4] = static_cast<float>(p[4] - minX);
+                    segment.p[5] = static_cast<float>(p[5] - minY);
+                    segment.p[6] = static_cast<float>(p[6] - minX);
+                    segment.p[7] = static_cast<float>(p[7] - minY);
+                }
+                segment.kind = pending.kind;
+                segment.link = pending.link;
+                segment.arcStart = 0;
+                segment.arcEnd = 0;
+            }
+        }
+        renderer->fillPending.clear();
+        renderer->fillHasSubpath = false;
+        renderer->fillBuild.paths.push_back(path);
+        return static_cast<uint32_t>(renderer->fillBuild.paths.size() - 1);
+    }
+    path.miterScale = (flags & FillPathNeedMiter) ? fillMiterScale(renderer->fillPending) : 1.0;
     double minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
     double area = 0;
     double subpathArea = 0;
     bool mixed = false;
+    bool needArea = (flags & FillPathNeedArea) != 0;
     for (const FillPendingSegment& segment : renderer->fillPending) {
-        if (segment.kind & FillSegmentStart) {
-            mixed = mixed || subpathArea * area < 0;
-            area += subpathArea;
-            subpathArea = 0;
-        }
-        const double* p = segment.p;
-        auto cross = [p](int first, int second) {
-            return p[first * 2] * p[second * 2 + 1] - p[second * 2] * p[first * 2 + 1];
-        };
-        if ((segment.kind & FillSegmentKindMask) == 0) {
-            subpathArea += cross(0, 3) * 0.5;
-        } else {
-            subpathArea += (12 * cross(0, 1) + 6 * cross(0, 2) + 2 * cross(0, 3) +
-                6 * cross(1, 2) + 6 * cross(1, 3) + 12 * cross(2, 3)) / 40;
-        }
-        for (int point = 0; point < 4; ++point) {
-            if ((segment.kind & FillSegmentKindMask) == 0 && (point == 1 || point == 2)) {
-                continue;
+        if (needArea) {
+            if (segment.kind & FillSegmentStart) {
+                mixed = mixed || subpathArea * area < 0;
+                area += subpathArea;
+                subpathArea = 0;
             }
-            minX = std::min(minX, segment.p[point * 2]);
-            minY = std::min(minY, segment.p[point * 2 + 1]);
-            maxX = std::max(maxX, segment.p[point * 2]);
-            maxY = std::max(maxY, segment.p[point * 2 + 1]);
+            const double* p = segment.p;
+            auto cross = [p](int first, int second) {
+                return p[first * 2] * p[second * 2 + 1] - p[second * 2] * p[first * 2 + 1];
+            };
+            if ((segment.kind & FillSegmentKindMask) == 0) {
+                subpathArea += cross(0, 3) * 0.5;
+            } else {
+                subpathArea += (12 * cross(0, 1) + 6 * cross(0, 2) + 2 * cross(0, 3) +
+                    6 * cross(1, 2) + 6 * cross(1, 3) + 12 * cross(2, 3)) / 40;
+            }
+        }
+        if ((segment.kind & FillSegmentKindMask) == 0) {
+            minX = std::min(minX, std::min(segment.p[0], segment.p[6]));
+            minY = std::min(minY, std::min(segment.p[1], segment.p[7]));
+            maxX = std::max(maxX, std::max(segment.p[0], segment.p[6]));
+            maxY = std::max(maxY, std::max(segment.p[1], segment.p[7]));
+        } else {
+            for (int point = 0; point < 4; ++point) {
+                minX = std::min(minX, segment.p[point * 2]);
+                minY = std::min(minY, segment.p[point * 2 + 1]);
+                maxX = std::max(maxX, segment.p[point * 2]);
+                maxY = std::max(maxY, segment.p[point * 2 + 1]);
+            }
         }
     }
     if (renderer->fillPending.empty()) {
         minX = minY = maxX = maxY = 0;
     }
-    mixed = mixed || subpathArea * area < 0;
-    area += subpathArea;
+    if (needArea) {
+        mixed = mixed || subpathArea * area < 0;
+        area += subpathArea;
+        path.area = mixed ? 0 : std::fabs(area);
+    } else {
+        path.area = 0;
+    }
     path.originX = minX;
     path.originY = minY;
     path.width = maxX - minX;
     path.height = maxY - minY;
-    path.area = mixed ? 0 : std::fabs(area);
     ensureVectorCapacity(
         renderer,
         renderer->fillSegments,
         renderer->fillSegments.size() + renderer->fillPending.size()
     );
+    bool exactLength = (flags & FillPathNeedLength) != 0;
+    bool approxLength = !exactLength && (flags & FillPathNeedApproxLength) != 0;
     double arc = 0;
     for (const FillPendingSegment& pending : renderer->fillPending) {
         FillSegmentGPU segment = {};
-        for (int point = 0; point < 4; ++point) {
-            segment.p[point * 2] = static_cast<float>(pending.p[point * 2] - minX);
-            segment.p[point * 2 + 1] = static_cast<float>(pending.p[point * 2 + 1] - minY);
+        if ((pending.kind & FillSegmentKindMask) == 0) {
+            segment.p[0] = static_cast<float>(pending.p[0] - minX);
+            segment.p[1] = static_cast<float>(pending.p[1] - minY);
+            segment.p[6] = static_cast<float>(pending.p[6] - minX);
+            segment.p[7] = static_cast<float>(pending.p[7] - minY);
+        } else {
+            for (int point = 0; point < 4; ++point) {
+                segment.p[point * 2] = static_cast<float>(pending.p[point * 2] - minX);
+                segment.p[point * 2 + 1] = static_cast<float>(pending.p[point * 2 + 1] - minY);
+            }
         }
         segment.kind = pending.kind;
         segment.link = pending.link;
-        if (pending.kind & FillSegmentStart) {
-            arc = 0;
+        if (exactLength) {
+            if (pending.kind & FillSegmentStart) {
+                arc = 0;
+            }
+            double length = (pending.kind & FillSegmentImplicit) ? 0 : fillSegmentLength(pending);
+            segment.arcStart = static_cast<float>(arc);
+            arc += length;
+            segment.arcEnd = static_cast<float>(arc);
+            path.length += length;
+        } else if (approxLength) {
+            path.length += (pending.kind & FillSegmentImplicit) ? 0 : fillSegmentLengthApprox(pending);
         }
-        double length = (pending.kind & FillSegmentImplicit) ? 0 : fillSegmentLength(pending);
-        segment.arcStart = static_cast<float>(arc);
-        arc += length;
-        segment.arcEnd = static_cast<float>(arc);
-        path.length += length;
         renderer->fillSegments.push_back(segment);
     }
     renderer->fillPending.clear();
@@ -15796,7 +17761,7 @@ static uint64_t brushDabKey(
 
 static void acquireBrushDabs(
     MetalRenderer* renderer,
-    FillSpanRecord& span,
+    FillSpanExtra& extra,
     const uint8_t* verbs,
     int64_t verbCount,
     const double* coords,
@@ -15826,17 +17791,21 @@ static void acquireBrushDabs(
     }
     ++entry.refs;
     entry.lastUsed = renderer->frameCount;
-    span.dabKey = key;
-    span.dabs = &entry;
+    extra.dabKey = key;
+    extra.dabs = &entry;
 }
 
-static void releaseBrushDabs(std::vector<FillSpanRecord>& spans) {
-    for (FillSpanRecord& span : spans) {
-        if (span.dabs && span.dabs->refs) {
-            --span.dabs->refs;
-        }
-        span.dabs = nullptr;
+static void releaseBrushDabs(FillGeometryRecord& geometry) {
+    if (!geometry.hasBrushes) {
+        return;
     }
+    for (FillSpanExtra& extra : geometry.extras) {
+        if (extra.dabs && extra.dabs->refs) {
+            --extra.dabs->refs;
+        }
+        extra.dabs = nullptr;
+    }
+    geometry.hasBrushes = false;
 }
 
 static void sweepBrushDabs(MetalRenderer* renderer) {
@@ -15851,7 +17820,7 @@ static void sweepBrushDabs(MetalRenderer* renderer) {
 
 static void releaseChunkPathSet(MetalRenderer* renderer, uint32_t slot) {
     ChunkPathSet& set = renderer->chunkPaths[slot];
-    releaseBrushDabs(set.geometry.spans);
+    releaseBrushDabs(set.geometry);
     for (const FillPathRecord& path : set.geometry.paths) {
         renderer->fillDeadSegments += path.segmentCount;
     }
@@ -15873,6 +17842,19 @@ static void requestChunkShaders(
     const BxGuiMetalGradient* gradients,
     uint64_t gradientCount
 ) {
+    if (!gradientCount) {
+        return;
+    }
+    bool anyShader = false;
+    for (uint64_t index = 0; index < gradientCount; ++index) {
+        if (gradients[index].kind >= 4) {
+            anyShader = true;
+            break;
+        }
+    }
+    if (!anyShader) {
+        return;
+    }
     for (uint64_t index = 0; index < styleCount; ++index) {
         const BxGuiMetalPathStyle& style = styles[index];
         if (isShaderPaint(gradients, gradientCount, style.gradient)) {
@@ -15953,34 +17935,76 @@ extern "C" int64_t brixGuiMetalChunkPaths(
     for (const FillPathRecord& path : set.geometry.paths) {
         renderer->fillDeadSegments += path.segmentCount;
     }
-    releaseBrushDabs(set.geometry.spans);
+    releaseBrushDabs(set.geometry);
     if (renderer->fillBuilding) {
         fillAbandonBuild(renderer);
     }
     std::swap(renderer->fillBuild, set.geometry);
+    set.geometry.resident = false;
+    set.geometry.hasBrushes = false;
     renderer->fillBuild.paths.clear();
     renderer->fillBuild.spans.clear();
+    renderer->fillBuild.extras.clear();
     renderer->fillBuild.resident = false;
+    renderer->fillBuild.hasBrushes = false;
+    fillCompactSegments(renderer);
     renderer->fillBuilding = true;
     set.key = key;
+    set.stopsExpandSerial = 0;
     set.palette.clear();
-    set.gradients.assign(gradients, gradients + gradientCount);
+    set.gradients.assignFrom(gradients, static_cast<size_t>(gradientCount));
     requestChunkShaders(renderer, items, count, styles, styleCount, gradients, gradientCount);
-    set.stops.resize(static_cast<size_t>(stopCount));
+    set.stops.resizeUninit(static_cast<size_t>(stopCount));
+    FillStopGPU* stopOut = set.stops.data();
     for (uint64_t index = 0; index < stopCount; ++index) {
-        FillStopGPU& stop = set.stops[index];
-        stop = {};
-        for (int channel = 0; channel < 4; ++channel) {
-            stop.color[channel] = static_cast<float>(stops[index].color[channel]);
+        const BxGuiMetalGradientStop& src = stops[index];
+        FillStopGPU& stop = stopOut[index];
+        stop.color[0] = static_cast<float>(src.color[0]);
+        stop.color[1] = static_cast<float>(src.color[1]);
+        stop.color[2] = static_cast<float>(src.color[2]);
+        stop.color[3] = static_cast<float>(src.color[3]);
+        stop.offset = static_cast<float>(src.offset);
+        stop.padding[0] = 0;
+        stop.padding[1] = 0;
+        stop.padding[2] = 0;
+    }
+    set.gradientTranslucent.resizeUninit(static_cast<size_t>(gradientCount));
+    uint8_t* transOut = set.gradientTranslucent.data();
+    for (uint64_t index = 0; index < gradientCount; ++index) {
+        const BxGuiMetalGradient& grad = gradients[index];
+        uint8_t trans = 0;
+        if (grad.kind == 2 || grad.kind >= 4) {
+            trans = 1;
+        } else if (grad.stopCount && grad.stopStart <= stopCount &&
+                grad.stopCount <= stopCount - grad.stopStart) {
+            for (uint32_t s = 0; s < grad.stopCount; ++s) {
+                if (stopOut[grad.stopStart + s].color[3] < 1.0f) {
+                    trans = 1;
+                    break;
+                }
+            }
         }
-        stop.offset = static_cast<float>(stops[index].offset);
+        transOut[index] = trans;
     }
     set.shaderArgs.resize(static_cast<size_t>(shaderArgCount));
     for (uint64_t index = 0; index < shaderArgCount; ++index) {
         set.shaderArgs[index] = static_cast<float>(shaderArgs[index]);
     }
     set.statePaths.clear();
-    set.spanItems.clear();
+    renderer->fillBuild.paths.reserve(static_cast<size_t>(styleCount + stateCount));
+    renderer->fillBuild.spans.reserve(static_cast<size_t>(styleCount));
+    set.spanItems.reserve(static_cast<size_t>(styleCount));
+    FillSpanRecord* spansOut = renderer->fillBuild.spans.data();
+    uint32_t* spanItemsOut = set.spanItems.data();
+    set.palette.resizeUninit(static_cast<size_t>(styleCount) * 8);
+    float* paletteOut = set.palette.data();
+    if (renderer->fillPending.capacity() < 64) {
+        renderer->fillPending.reserve(64);
+    }
+    size_t segReserve = static_cast<size_t>(verbCount) + static_cast<size_t>(styleCount);
+    if (segReserve > 0) {
+        ensureVectorCapacity(renderer, renderer->fillSegments, renderer->fillSegments.size() + segReserve);
+    }
     uint64_t styled = 0;
     for (uint64_t index = 0; index < count; ++index) {
         const BxGuiMetalDisplayItem& item = items[index];
@@ -15994,81 +18018,140 @@ extern "C" int64_t brixGuiMetalChunkPaths(
         int64_t itemVerbCount = 0;
         const double* itemCoords = nullptr;
         bool itemClose = false;
+        uint32_t pathFlags = 0;
+        bool hasFill = false;
+        bool hasStroke = false;
+        uint32_t cap = 0;
+        uint32_t join = 0;
+        uint32_t builtPath = UINT32_MAX;
+        if (valid) {
+            const BxGuiMetalPathStyle& style = styles[styled];
+            hasFill = (style.paint & 1u) != 0;
+            hasStroke = (style.paint & 2u) != 0 && style.strokeWidth > 0;
+            cap = static_cast<uint32_t>(style.strokeStyle & 15u);
+            join = static_cast<uint32_t>((style.strokeStyle >> 4) & 15u);
+            if (hasStroke) {
+                if (join == FillStrokeJoinMiter) {
+                    pathFlags |= FillPathNeedMiter;
+                }
+                if (style.dash > 0) {
+                    pathFlags |= FillPathNeedLength;
+                }
+            }
+        }
         if (valid && shape == 2) {
             uint64_t start = item.data0;
             uint64_t length = item.data1;
             uint64_t coordStart = item.data2;
             valid = verbs && coords && start <= verbCount && length <= verbCount - start &&
-                coordStart <= coordCount &&
-                chunkVerbCoords(verbs + start, length) <= coordCount - coordStart;
+                coordStart <= coordCount;
             if (valid) {
                 itemVerbs = verbs + start;
                 itemVerbCount = static_cast<int64_t>(length);
                 itemCoords = coords + coordStart;
                 itemClose = (styles[styled].paint & 4u) != 0;
-                fillAppendVerbs(renderer, itemVerbs, itemVerbCount, itemCoords);
-                if (itemClose) {
-                    const uint8_t close = 3;
-                    fillAppendVerbs(renderer, &close, 1, nullptr);
+                if (!pathFlags && itemVerbCount <= 28) {
+                    valid = fillAppendChunkPathDirect(
+                        renderer,
+                        itemVerbs,
+                        itemVerbCount,
+                        itemCoords,
+                        coordCount - coordStart,
+                        itemClose,
+                        builtPath
+                    );
+                } else {
+                    valid = fillAppendVerbsChecked(
+                        renderer,
+                        itemVerbs,
+                        itemVerbCount,
+                        itemCoords,
+                        coordCount - coordStart
+                    );
+                    if (valid && itemClose) {
+                        const uint8_t close = 3;
+                        fillAppendVerbs(renderer, &close, 1, nullptr);
+                    }
                 }
             }
         } else if (valid) {
-            chunkShapeVerbs(renderer, item, shape == 1);
-            itemVerbs = renderer->chunkPathVerbs.data();
-            itemVerbCount = static_cast<int64_t>(renderer->chunkPathVerbs.size());
-            itemCoords = renderer->chunkPathCoords.data();
-            fillAppendVerbs(renderer, itemVerbs, itemVerbCount, itemCoords);
+            if (pathFlags || styles[styled].brush ||
+                    !fillAppendChunkShapeDirect(renderer, item, shape == 1, builtPath)) {
+                chunkShapeVerbs(renderer, item, shape == 1);
+                itemVerbs = renderer->chunkPathVerbs.data();
+                itemVerbCount = static_cast<int64_t>(renderer->chunkPathVerbs.size());
+                itemCoords = renderer->chunkPathCoords.data();
+                fillAppendVerbs(renderer, itemVerbs, itemVerbCount, itemCoords);
+            }
         }
         if (!valid) {
+            renderer->fillBuild.spans.setSize(static_cast<size_t>(styled));
+            set.spanItems.setSize(static_cast<size_t>(styled));
             fillAbandonBuild(renderer);
             releaseChunkPathSet(renderer, slot);
             return -1;
         }
         const BxGuiMetalPathStyle& style = styles[styled];
-        FillSpanRecord span;
-        span.path = fillEndPath(renderer);
-        span.role = (style.paint & 1u) ? 3 : 2;
+        FillSpanRecord& span = spansOut[styled];
+        span.path = builtPath != UINT32_MAX ? builtPath : fillEndPath(renderer, pathFlags);
+        span.role = hasFill ? 3 : 2;
         span.paletteIndex = static_cast<uint32_t>(styled * 2);
         span.fillRule = (style.paint & 8u) ? 1 : 0;
         span.strokeRole = (style.paint & 2u) ? 3 : 2;
         span.strokePaletteIndex = static_cast<uint32_t>(styled * 2 + 1);
         span.paint = style.gradient;
         span.strokeWidth = style.strokeWidth;
-        span.strokeCap = static_cast<uint8_t>(style.strokeStyle & 15u);
-        span.strokeJoin = static_cast<uint8_t>((style.strokeStyle >> 4) & 15u);
+        span.strokeCap = static_cast<uint8_t>(cap);
+        span.strokeJoin = static_cast<uint8_t>(join);
         span.strokeAlignment = FillAlignCenter;
         span.dash = style.dash;
-        span.shadow = (style.paint & 16u) != 0;
-        span.shadowOffset[0] = style.shadow[0];
-        span.shadowOffset[1] = style.shadow[1];
-        span.shadowBlur = style.shadow[2];
-        if (style.brush && gradients[style.brush - 1].kind == 6) {
-            const BxGuiMetalGradient& brush = gradients[style.brush - 1];
-            if (brush.stopCount >= kBrushParams && brush.stopStart <= shaderArgCount &&
-                    brush.stopCount <= shaderArgCount - brush.stopStart) {
-                span.brush = style.brush;
-                acquireBrushDabs(
-                    renderer,
-                    span,
-                    itemVerbs,
-                    itemVerbCount,
-                    itemCoords,
-                    itemClose,
-                    style.strokeWidth,
-                    shaderArgs[brush.stopStart]
-                );
+        span.shadow = (style.paint & 16u) != 0 ? 1 : 0;
+        span.hasBrush = 0;
+        span.extra = UINT32_MAX;
+        if (span.shadow || (style.brush && gradients[style.brush - 1].kind == 6)) {
+            FillSpanExtra extra;
+            extra.shadowOffset[0] = style.shadow[0];
+            extra.shadowOffset[1] = style.shadow[1];
+            extra.shadowBlur = style.shadow[2];
+            if (style.brush && gradients[style.brush - 1].kind == 6) {
+                const BxGuiMetalGradient& brush = gradients[style.brush - 1];
+                if (brush.stopCount >= kBrushParams && brush.stopStart <= shaderArgCount &&
+                        brush.stopCount <= shaderArgCount - brush.stopStart) {
+                    extra.brush = style.brush;
+                    span.hasBrush = 1;
+                    acquireBrushDabs(
+                        renderer,
+                        extra,
+                        itemVerbs,
+                        itemVerbCount,
+                        itemCoords,
+                        itemClose,
+                        style.strokeWidth,
+                        shaderArgs[brush.stopStart]
+                    );
+                    renderer->fillBuild.hasBrushes = true;
+                }
+            }
+            if (span.shadow || span.hasBrush) {
+                span.extra = static_cast<uint32_t>(renderer->fillBuild.extras.size());
+                renderer->fillBuild.extras.push_back(extra);
             }
         }
-        renderer->fillBuild.spans.push_back(span);
-        set.spanItems.push_back(static_cast<uint32_t>(index));
-        for (int channel = 0; channel < 4; ++channel) {
-            set.palette.push_back(static_cast<float>(style.fill[channel]));
-        }
-        for (int channel = 0; channel < 4; ++channel) {
-            set.palette.push_back(static_cast<float>(style.stroke[channel]));
-        }
+        spanItemsOut[styled] = static_cast<uint32_t>(index);
+        float* colorDst = paletteOut + styled * 8;
+        colorDst[0] = static_cast<float>(style.fill[0]);
+        colorDst[1] = static_cast<float>(style.fill[1]);
+        colorDst[2] = static_cast<float>(style.fill[2]);
+        colorDst[3] = static_cast<float>(style.fill[3]);
+        colorDst[4] = static_cast<float>(style.stroke[0]);
+        colorDst[5] = static_cast<float>(style.stroke[1]);
+        colorDst[6] = static_cast<float>(style.stroke[2]);
+        colorDst[7] = static_cast<float>(style.stroke[3]);
         ++styled;
     }
+    renderer->fillBuild.spans.setSize(static_cast<size_t>(styled));
+    set.spanItems.setSize(static_cast<size_t>(styled));
+    set.palette.resizeUninit(static_cast<size_t>(styled) * 8);
     set.statePaths.assign(static_cast<size_t>(stateCount), UINT32_MAX);
     for (uint64_t index = 1; index < stateCount; ++index) {
         const BxGuiMetalState& state = states[index];
@@ -16080,16 +18163,24 @@ extern "C" int64_t brixGuiMetalChunkPaths(
                 static_cast<int64_t>(renderer->chunkPathVerbs.size()),
                 renderer->chunkPathCoords.data()
             );
-            set.statePaths[index] = fillEndPath(renderer);
+            set.statePaths[index] = fillEndPath(renderer, 0);
         } else if (state.kind == StateClipPath) {
             uint64_t start = state.pathStart;
             uint64_t length = state.pathCount;
             uint64_t coordStart = state.coordStart;
             if (verbs && coords && start <= verbCount && length <= verbCount - start &&
                     coordStart <= coordCount &&
-                    chunkVerbCoords(verbs + start, length) <= coordCount - coordStart) {
-                fillAppendVerbs(renderer, verbs + start, static_cast<int64_t>(length), coords + coordStart);
-                set.statePaths[index] = fillEndPath(renderer);
+                    fillAppendVerbsChecked(
+                        renderer,
+                        verbs + start,
+                        static_cast<int64_t>(length),
+                        coords + coordStart,
+                        coordCount - coordStart
+                    )) {
+                set.statePaths[index] = fillEndPath(renderer, 0);
+            } else {
+                renderer->fillPending.clear();
+                renderer->fillHasSubpath = false;
             }
         }
     }
@@ -16098,7 +18189,9 @@ extern "C" int64_t brixGuiMetalChunkPaths(
     std::swap(renderer->fillBuild, set.geometry);
     renderer->fillBuild.paths.clear();
     renderer->fillBuild.spans.clear();
+    renderer->fillBuild.extras.clear();
     renderer->fillBuild.resident = false;
+    renderer->fillBuild.hasBrushes = false;
     renderer->fillBuilding = false;
     uint32_t serial = ++renderer->chunkPathSerial;
     if (!serial) {

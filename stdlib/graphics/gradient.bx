@@ -105,27 +105,39 @@
 
 (fn-do _ validate-gradient-stops _
   (param stops (list GradientStop))
-  (throw (call Panic "Gradients require at least two stops") (if (< (. stops length) 2)))
+  (let count (. stops length))
+  (throw (call Panic "Gradients require at least two stops") (if (< count 2)))
   (blank)
+  (if (== count 2)
+    (let s0 ([] stops 0))
+    (let s1 ([] stops 1))
+    (let o0 (. s0 offset))
+    (let o1 (. s1 offset))
+    (throw (call Panic "Gradient stop offsets must be finite and between zero and one") (if (or (!= (- o0 o0) 0.0) (< o0 0%%) (> o0 1%%) (!= (- o1 o1) 0.0) (< o1 0%%) (> o1 1%%))))
+    (throw (call Panic "Gradient stop offsets must be ordered") (if (< o1 o0)))
+    (throw (call Panic "Gradient stop colors must be finite") (if (or (not (call gradient-color-is-finite (. s0 color))) (not (call gradient-color-is-finite (. s1 color))))))
+    (return)
+  )
   (let previous 0%%)
-  (for (in index (..< 0 (. stops length)))
+  (for (in index (..< 0 count))
     (let stop ([] stops index))
-    (throw (call Panic "Gradient stop offsets must be finite and between zero and one") (if (or (not (call is-finite (. stop offset))) (< (. stop offset) 0%%) (> (. stop offset) 1%%))))
-    (throw (call Panic "Gradient stop offsets must be ordered") (if (and (> index 0) (< (. stop offset) previous))))
+    (let off (. stop offset))
+    (throw (call Panic "Gradient stop offsets must be finite and between zero and one") (if (or (!= (- off off) 0.0) (< off 0%%) (> off 1%%))))
+    (throw (call Panic "Gradient stop offsets must be ordered") (if (and (> index 0) (< off previous))))
     (throw (call Panic "Gradient stop colors must be finite") (if (not (call gradient-color-is-finite (. stop color)))))
     (blank)
-    (= previous (. stop offset))
+    (= previous off)
   )
 )
 
-(fn-expr _ gradient-point-is-finite _
+(fn-expr _ gradient-point-is-finite _ @inline
   (param point Point)
-  (and (call is-finite (. point x)) (call is-finite (. point y)))
+  (and (== (- (. point x) (. point x)) 0.0) (== (- (. point y) (. point y)) 0.0))
 )
 
-(fn-expr _ gradient-color-is-finite Bool
+(fn-expr _ gradient-color-is-finite Bool @inline
   (param color RGBA)
-  (and (call is-finite (. color red)) (call is-finite (. color green)) (call is-finite (. color blue)) (call is-finite (. color alpha)))
+  (and (== (- (. color red) (. color red)) 0.0) (== (- (. color green) (. color green)) 0.0) (== (- (. color blue) (. color blue)) 0.0) (== (- (. color alpha) (. color alpha)) 0.0))
 )
 
 (fn-expr + hue-spectrum-stops _

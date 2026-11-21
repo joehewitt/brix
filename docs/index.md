@@ -72,7 +72,10 @@ ships. Unlike the core tests, they show how complete programs are written.
   deformation, paint tiers and split static/dynamic layers. `transit-atlas` renders a zoomable
   vector transit map of cubic metro loops, long diagonal trunk lines, dashed express and ferry
   lanes, aligned double tracks and up to 4,000 animated vehicles with click-triggered reroute
-  waves.
+  waves. `clockwork` fills a canvas with watch movements of up to 4,000 meshing gears, balance
+  wheels and linkages, turned as stamps under rotating matrices or re-traced each frame, with
+  controls for segments per tooth, cutout fill rule, and strokes, bevels, gradients, blends,
+  shadows and path clips one at a time.
 - [`examples/games`](../examples/games): three macOS games, `resonance`, `prism-break` and
   `clatter-hill`, a marble run with sound.
 - [`examples/graphics`](../examples/graphics): macOS windows that draw with the graphics library.

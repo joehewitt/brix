@@ -38,22 +38,22 @@
     (= state (call create-state))
   )
   (fn-do + close _)
-  (fn-expr + fill-color _ :get
+  (fn-expr + fill-color _ :get @inline
     (?. state fill-color)
   )
-  (fn-expr + stroke-color _ :get
+  (fn-expr + stroke-color _ :get @inline
     (?. state stroke-color)
   )
-  (fn-expr + stroke-width Length :get
+  (fn-expr + stroke-width Length :get @inline
     (?? (?. state stroke-width) 0)
   )
-  (fn-expr + stroke-cap LineCap :get
+  (fn-expr + stroke-cap LineCap :get @inline
     (?? (?. state stroke-cap) (. LineCap butt))
   )
-  (fn-expr + stroke-join LineJoin :get
+  (fn-expr + stroke-join LineJoin :get @inline
     (?? (?. state stroke-join) (. LineJoin miter))
   )
-  (fn-expr + stroke-dash Length :get
+  (fn-expr + stroke-dash Length :get @inline
     (?? (?. state stroke-dash) 0)
   )
   (fn-expr + font Font :get
@@ -65,17 +65,20 @@
   (fn-expr + blend-mode _ :get
     (?? (?. state blend-mode) (. BlendMode normal))
   )
-  (fn-expr + fill-paint (? Paint) :get
+  (fn-expr + fill-paint (? Paint) :get @inline
     (?. state fill-paint)
   )
-  (fn-expr + stroke-brush (? Brush) :get
+  (fn-expr + stroke-brush (? Brush) :get @inline
     (?. state stroke-brush)
   )
-  (fn-expr + text-fill (? ShaderFill) :get
+  (fn-expr + text-fill (? ShaderFill) :get @inline
     (?. state text-fill)
   )
-  (fn-expr + shape-fill (? ShaderFill) :get
+  (fn-expr + shape-fill (? ShaderFill) :get @inline
     (?. state shape-fill)
+  )
+  (fn-expr + gradient-fill (? Gradient) :get @inline
+    (?. state gradient-fill)
   )
   (fn-expr + current-matrix Matrix :get
     (?? (?. state current-transform) (call Matrix))
@@ -87,67 +90,88 @@
     (call CanvasStateScope this)
   )
   (fn-do + fill-color _ :set (param color (? RGBA))
-    (call (?. state set-fill-color) color)
+    (= (. (call writable-state) fill-color) color)
   )
   (fn-do + stroke-color _ :set (param color (? RGBA))
-    (call (?. state set-stroke-color) color)
+    (= (. (call writable-state) stroke-color) color)
   )
   (fn-do + stroke-width _ :set (param width Length)
-    (call (?. state set-stroke-width) width)
+    (= (. (call writable-state) stroke-width) width)
   )
   (fn-do + stroke-cap _ :set (param cap LineCap)
-    (call (?. state set-stroke-cap) cap)
+    (= (. (call writable-state) stroke-cap) cap)
   )
   (fn-do + stroke-join _ :set (param join LineJoin)
-    (call (?. state set-stroke-join) join)
+    (= (. (call writable-state) stroke-join) join)
   )
   (fn-do + stroke-dash _ :set (param length Length)
-    (call (?. state set-stroke-dash) length)
+    (= (. (call writable-state) stroke-dash) length)
   )
   (fn-do + font _ :set (param font Font)
-    (call (?. state set-font) font)
+    (= (. (call writable-state) font) font)
   )
   (fn-do + text-color _ :set (param color RGBA)
-    (call (?. state set-text-color) color)
+    (= (. (call writable-state) text-color) color)
   )
   (fn-do + blend-mode _ :set (param mode BlendMode)
-    (call (?. state set-blend-mode) mode)
+    (= (. (call writable-state) blend-mode) mode)
   )
   (fn-do + fill-paint _ :set (param paint (? Paint))
-    (call (?. state set-fill-paint) paint)
+    (= (. (call writable-state) fill-paint) paint)
   )
   (fn-do + stroke-brush _ :set (param brush (? Brush))
-    (call (?. state set-stroke-brush) brush)
+    (= (. (call writable-state) stroke-brush) brush)
   )
   (fn-do + text-fill _ :set (param fill (? ShaderFill))
-    (call (?. state set-text-fill) fill)
+    (= (. (call writable-state) text-fill) fill)
   )
   (fn-do + shape-fill _ :set (param fill (? ShaderFill))
-    (call (?. state set-shape-fill) fill)
+    (= (. (call writable-state) shape-fill) fill)
+  )
+  (fn-do + gradient-fill _ :set (param gradient (? Gradient))
+    (= (. (call writable-state) gradient-fill) gradient)
   )
   (fn-do + write _ (?! Error)
     (param path Path)
   )
-  (fn-do + push _
-    (probe-count gui.canvas.state-pushes)
+  (fn-do _ writable-state CanvasState @inline
     (let current (!! state))
+    (return-if current (if (== (. current shared-depth) 0)))
+    (blank)
+    (return (call detach-shared-state current))
+  )
+  (fn-do _ detach-shared-state CanvasState
+    (param current CanvasState)
+    (-= (. current shared-depth) 1)
     (let next (?? spare-state (call create-state)))
     (= spare-state (. next previous))
     (call (. next copy-from) current)
+    (= (. next shared-depth) 0)
     (= (. next previous) current)
     (= state next)
+    (return next)
+  )
+  (fn-do + push _
+    (probe-count gui.canvas.state-pushes)
+    (let current (!! state))
+    (+= (. current shared-depth) 1)
   )
   (fn-do + pop _
     (let current state)
-    (let previous (?. current previous))
-    (if (and current previous)
-      (= (. current previous) spare-state)
-      (= spare-state current)
-      (= state previous)
-      (else
-        (= state (call create-state))
+    (if current
+      (if (> (. current shared-depth) 0)
+        (-= (. current shared-depth) 1)
+        (return)
+      )
+      (let previous (. current previous))
+      (if previous
+        (= (. current previous) spare-state)
+        (= spare-state current)
+        (= state previous)
+        (return)
       )
     )
+    (= state (call create-state))
   )
   (fn-expr + create-state CanvasState
     (call CanvasState)
@@ -251,7 +275,7 @@
   )
   (fn-do + transform _
     (param matrix Matrix)
-    (call (?. state concatenate-transform) matrix)
+    (call (. (call writable-state) concatenate-transform) matrix)
   )
   (fn-do + transform-content _
     (param matrix Matrix)
@@ -480,7 +504,7 @@
     (+= color-change-count 1)
     (+= state-command-count 1)
     (call tally-color 4 color)
-    (call (?. state set-fill-color) color)
+    (call (. (call writable-state) set-fill-color) color)
   )
   (fn-do + stroke-color _ :set (param color (? RGBA))
     (probe-count graphics.canvas.state)
@@ -488,7 +512,7 @@
     (+= color-change-count 1)
     (+= state-command-count 1)
     (call tally-color 5 color)
-    (call (?. state set-stroke-color) color)
+    (call (. (call writable-state) set-stroke-color) color)
   )
   (fn-do + stroke-width _ :set (param width Length)
     (probe-count graphics.canvas.state)
@@ -496,27 +520,27 @@
     (+= color-change-count 1)
     (+= state-command-count 1)
     (call tally 6 width)
-    (call (?. state set-stroke-width) width)
+    (call (. (call writable-state) set-stroke-width) width)
   )
   (fn-do + stroke-cap _ :set (param cap LineCap)
     (probe-count graphics.canvas.state)
     (+= cap-change-count 1)
     (+= state-command-count 1)
     (call tally 21 (call line-cap-key cap))
-    (call (?. state set-stroke-cap) cap)
+    (call (. (call writable-state) set-stroke-cap) cap)
   )
   (fn-do + stroke-join _ :set (param join LineJoin)
     (probe-count graphics.canvas.state)
     (+= join-change-count 1)
     (+= state-command-count 1)
     (call tally 22 (call line-join-key join))
-    (call (?. state set-stroke-join) join)
+    (call (. (call writable-state) set-stroke-join) join)
   )
   (fn-do + stroke-dash _ :set (param length Length)
     (probe-count graphics.canvas.state)
     (+= state-command-count 1)
     (call tally 25 length)
-    (call (?. state set-stroke-dash) length)
+    (call (. (call writable-state) set-stroke-dash) length)
   )
   (fn-do + push _
     (probe-count graphics.canvas.state)
@@ -698,7 +722,7 @@
     (+= translate-count 1)
     (+= state-command-count 1)
     (call tally 14 x y)
-    (call (?. state concatenate-transform) (call matrix-from-translation (call Point x y)))
+    (call (. (call writable-state) concatenate-transform) (call matrix-from-translation (call Point x y)))
   )
   (fn-do + transform _
     (param matrix Matrix)
@@ -706,7 +730,7 @@
     (+= transform-count 1)
     (+= state-command-count 1)
     (call tally 23 (. matrix a) (. matrix c) (. matrix b) (. matrix d) (. matrix tx) (. matrix ty))
-    (call (?. state concatenate-transform) matrix)
+    (call (. (call writable-state) concatenate-transform) matrix)
   )
   (fn-do + begin _
     (probe-group + graphics.canvas.path)
@@ -796,6 +820,7 @@
   (prop _ current-stroke-brush (? Brush))
   (prop _ current-text-fill (? ShaderFill))
   (prop _ current-shape-fill (? ShaderFill))
+  (prop _ current-gradient-fill (? Gradient))
   (prop _ saved-states (list RasterSavedState))
   (prop _ group-targets (list Pointer))
   (prop _ group-kinds (list U8))
@@ -920,8 +945,11 @@
   (fn-expr + shape-fill _ :get
     current-shape-fill
   )
+  (fn-expr + gradient-fill _ :get
+    current-gradient-fill
+  )
   (fn-expr _ draws-through-path Bool :get
-    (or (!= current-shape-fill null) (and (!= current-fill-paint null) (!= fill-color null)) (and (!= current-stroke-brush null) (!= stroke-color null)))
+    (or (!= current-shape-fill null) (!= current-gradient-fill null) (and (!= current-fill-paint null) (!= fill-color null)) (and (!= current-stroke-brush null) (!= stroke-color null)))
   )
   (fn-expr + current-matrix _ :get
     current-transform
@@ -1005,6 +1033,9 @@
   (fn-do + shape-fill _ :set (param fill (? ShaderFill))
     (= current-shape-fill fill)
   )
+  (fn-do + gradient-fill _ :set (param gradient (? Gradient))
+    (= current-gradient-fill gradient)
+  )
   (fn-do + push _
     (probe-count gui.canvas.state-pushes)
     (+= saved-states
@@ -1031,6 +1062,7 @@
           (arg current-stroke-brush)
           (arg current-text-fill)
           (arg current-shape-fill)
+          (arg current-gradient-fill)
         )
       )
     )
@@ -1060,6 +1092,7 @@
       (= current-stroke-brush (. saved stroke-brush))
       (= current-text-fill (. saved text-fill))
       (= current-shape-fill (. saved shape-fill))
+      (= current-gradient-fill (. saved gradient-fill))
       (call C:brixGraphicsRestore graphics)
       (else
         (call reset-current-state)
@@ -1267,7 +1300,7 @@
   )
   (fn-do + outline _
     (param shape Outline)
-    (if current-shape-fill
+    (if (or current-shape-fill current-gradient-fill)
       (call begin)
       (call outline-path shape)
       (call end true)
@@ -1530,6 +1563,7 @@
     (let stroke stroke-color)
     (let brushed (and (!= brush null) (!= stroke null)))
     (let shading current-shape-fill)
+    (let grad current-gradient-fill)
     (if shading
       (call C:brixGraphicsFillPathShader
         (block
@@ -1545,6 +1579,54 @@
         (call stroke-path-brush (!! brush) (!! stroke) false fill-rule)
         (else
           (call C:brixGraphicsDrawPath graphics false (!= stroke null) (call fill-rule-code fill-rule))
+        )
+      )
+      (else-if grad
+        (call (. grad validate))
+        (let stops (. grad stops))
+        (let components (list F64))
+        (let locations (list F64))
+        (for (in stop stops)
+          (+= components (. stop color red))
+          (+= components (. stop color green))
+          (+= components (. stop color blue))
+          (+= components (. stop color alpha))
+          (+= locations (. stop offset))
+        )
+        (let kind I32)
+        (let geometry (list F64))
+        (match grad
+          (case (: linear LinearGradient)
+            (= kind 1)
+            (= geometry (list (. linear start x) (. linear start y) 0 (. linear end x) (. linear end y) 0))
+          )
+          (case (: radial RadialGradient)
+            (= kind 2)
+            (let start (. radial start-center))
+            (let end (. radial end-center))
+            (= geometry (list (. start x) (. start y) (. radial start-radius) (. end x) (. end y) (. radial end-radius)))
+          )
+          (case (: conic ConicGradient)
+            (= kind 3)
+            (= geometry (list (. conic center x) (. conic center y) (. conic angle) 0 0 0))
+          )
+        )
+        (call C:brixGraphicsFillPathGradient
+          (block
+            (arg graphics)
+            (arg kind)
+            (arg (. geometry buffer-pointer))
+            (arg (. components buffer-pointer))
+            (arg (. locations buffer-pointer))
+            (arg (. stops length))
+            (arg (call fill-rule-code fill-rule))
+          )
+        )
+        (if brushed
+          (call stroke-path-brush (!! brush) (!! stroke) false fill-rule)
+          (else
+            (call C:brixGraphicsDrawPath graphics false (!= stroke null) (call fill-rule-code fill-rule))
+          )
         )
       )
       (else-if (and paint fill)
@@ -1800,6 +1882,7 @@
     (= current-stroke-brush null)
     (= current-text-fill null)
     (= current-shape-fill null)
+    (= current-gradient-fill null)
     (= native-known 0)
   )
   (fn-do _ enter-group _
@@ -2153,7 +2236,7 @@
   )
 )
 
-(fn-expr + line-cap-code _
+(fn-expr + line-cap-code _ @inline
   (param cap LineCap)
   (case? (only-if 1i32 (if (== cap (. LineCap round)))))
   (case? (only-if 2i32 (if (== cap (. LineCap square)))))
@@ -2162,7 +2245,7 @@
   )
 )
 
-(fn-expr + line-join-code _
+(fn-expr + line-join-code _ @inline
   (param join LineJoin)
   (case? (only-if 1i32 (if (== join (. LineJoin round)))))
   (case? (only-if 2i32 (if (== join (. LineJoin bevel)))))
@@ -2193,6 +2276,7 @@
   (prop + stroke-brush (? Brush))
   (prop + text-fill (? ShaderFill))
   (prop + shape-fill (? ShaderFill))
+  (prop + gradient-fill (? Gradient))
 )
 
 (type _ CanvasState
@@ -2210,6 +2294,8 @@
   (prop + stroke-brush (? Brush))
   (prop + text-fill (? ShaderFill))
   (prop + shape-fill (? ShaderFill))
+  (prop + gradient-fill (? Gradient))
+  (prop + shared-depth Size)
   (prop + previous (? CanvasState))
   (fn-do + copy-from _
     (param source CanvasState)
@@ -2227,6 +2313,7 @@
     (= stroke-brush (. source stroke-brush))
     (= text-fill (. source text-fill))
     (= shape-fill (. source shape-fill))
+    (= gradient-fill (. source gradient-fill))
   )
   (fn-do + set-fill-color _
     (param color (? RGBA))

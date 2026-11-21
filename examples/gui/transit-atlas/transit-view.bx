@@ -205,9 +205,16 @@
     (let include-static (not split-layers))
     (= dynamic-counts (call paint-transit-layer assets table canvas network clock waves motion-mode paint-tier include-static true))
   )
+  (fn-do + did-layout _
+    (call (. super did-layout))
+    (if (call (. camera place) (. bounds size) (. network extent))
+      (call sync-transforms)
+    )
+  )
   (fn-do _ rebuild-network _
     (= network (call TransitNetwork vehicle-count animated-share))
     (call (. waves waves clear))
+    (let ignored (call (. camera place) (. bounds size) (. network extent)))
     (call invalidate-all-layers)
   )
   (fn-do _ invalidate-all-layers _
@@ -225,10 +232,9 @@
   )
   (fn-do _ advance _
     (param seconds F64)
-    (let placed (. camera is-placed))
-    (call (. camera place) (. bounds size) (. network extent))
+    (let placed (call (. camera place) (. bounds size) (. network extent)))
     (let moved (call move-camera seconds))
-    (if (or moved (not placed))
+    (if (or moved placed)
       (call sync-transforms)
     )
     (let had-waves (> (. waves waves length) 0))
