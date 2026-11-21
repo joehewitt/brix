@@ -218,7 +218,7 @@ block ends.
 Blocks without cancel nest, and the task holds off cancellation until the outermost one ends,
 however it is left. In a cleanup of a cancelled task, where a wait would end the cleanup, a wait
 inside the block waits in full. Termination is not held off: a terminated task ends at its next
-wait, inside the block or not.
+wait or at the next poll of a loop it runs, inside the block or not.
 
 ```brix
 (main
