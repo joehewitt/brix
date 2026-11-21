@@ -136,11 +136,13 @@ within 2.83×.
 `PacketOpRasterTile` draws a tile as an axis-aligned quad. It samples nearest, with placement
 rounded to device pixels, when the tile displays at 1:1, and through the area sampler otherwise.
 
-A paint's `paper` coordinate is in points, measured from the content origin: the device position
-of the nearest `Box.content-transform`'s origin, rounded to a whole device pixel, or the surface
-origin outside one. Grain that reads it moves with the content. A tile frame measures from the
-tile's own content origin, so tiles match direct drawing at the settle level; between octave
-levels, grain is drawn at the level's scale and resampled. The CoreGraphics fallback still
+A paint's `paper` coordinate is in points. Inside a box's own painting under its
+`content-transform`, it is measured from the device position of the content origin, rounded to a
+whole device pixel, so grain pans with the content. A tile frame measures from the tile's content
+origin, so tiles match direct drawing at the settle level; between octave levels, grain is drawn
+at the level's scale and resampled. Everything else measures from the surface origin, including
+child boxes, which paint outside their parent's content transform. Grain stays screen-sized, so
+while directly drawn content zooms it slides with the content origin. The CoreGraphics fallback
 measures from its canvas.
 
 **Wants and rendering.** Encoding lists the tiles it wants, in order:
