@@ -491,6 +491,7 @@ static const uint32_t kImageTileSize = kImageTileContent + kImageTileGutter * 2;
 static const uint32_t kInstanceAffine = 0x1000u;
 static const uint32_t kInstanceEdges = 0x1f00u;
 static const uint32_t kInstanceTemplate = 0x2000u;
+static const uint32_t kInstanceLinear = 0x4000u;
 static const uint32_t kInstanceSpaceShift = 16;
 
 static uint32_t imageOpKind(const ImageOp& op, uint32_t kind) {
@@ -574,6 +575,7 @@ struct AtlasEntry {
     uint16_t height = 0;
     int16_t offsetX = 0;
     int16_t offsetTopY = 0;
+    float scale = 0;
     uint64_t lastUsedFrame = 0;
     bool valid = false;
 };
@@ -1194,12 +1196,16 @@ struct MetalRenderer {
     std::atomic<int64_t> tileGpuNanos{0};
     int64_t tilesRendered = 0;
     std::atomic<int64_t> completedFrame{-1};
+    std::array<id<MTLCommandBuffer>, 4> committedBuffers;
+    std::array<int64_t, 4> committedFrames{{-1, -1, -1, -1}};
     std::vector<RunRecord> runs;
     std::vector<uint32_t> freeRuns;
     std::unordered_map<uint64_t, uint32_t> runByLayout;
     MaskAtlas glyphAtlas;
     MaskAtlas imageAtlas;
     std::unordered_map<uint64_t, AtlasEntry> glyphEntries;
+    std::unordered_map<uint64_t, uint64_t> glyphProxies;
+    bool glyphUploadsDeferred = false;
     std::unordered_map<uint64_t, AtlasEntry> imageEntries;
     std::unordered_map<uint64_t, ImageTexture> imageTextures;
     uint64_t imageTextureBytes = 0;
@@ -1307,6 +1313,7 @@ struct MetalRenderer {
     bool fillActive = false;
     std::atomic<uint64_t> fillPieceHigh{0};
     std::atomic<bool> fillRedraw{false};
+    std::atomic<bool> glyphRedraw{false};
     std::atomic<int64_t> fillFramesPending{0};
     std::atomic<uint64_t> fillOverflows{0};
     int32_t encodeMode = 0;
@@ -1444,6 +1451,7 @@ struct VertexOut {
 constant uint kInstanceAffine = 0x1000u;
 constant uint kInstanceEdges = 0x1f00u;
 constant uint kInstanceTemplate = 0x2000u;
+constant uint kInstanceLinear = 0x4000u;
 constant uint kInstanceSpaceShift = 16u;
 
 static float4 unpackColor(uint color) {
@@ -4047,8 +4055,15 @@ fragment float4 brixGuiMetalMaskFragment(
         address::clamp_to_edge,
         filter::nearest
     );
+    constexpr sampler smoothSampler(
+        coord::normalized,
+        address::clamp_to_edge,
+        filter::linear
+    );
     float2 uv = in.uvBase + (in.local / (in.halfSize * 2.0) + 0.5) * in.uvSize;
-    float mask = texture.sample(textureSampler, uv).a;
+    float mask = (in.kind & kInstanceLinear) != 0u
+        ? texture.sample(smoothSampler, uv).a
+        : texture.sample(textureSampler, uv).a;
     float inside = step(in.contentMask.x, in.pixelPosition.x) *
         step(in.contentMask.y, in.pixelPosition.y) *
         step(in.pixelPosition.x, in.contentMask.z) *
@@ -5191,6 +5206,12 @@ static uint64_t glyphKey(CTFontRef font, CGGlyph glyph, int subpixel, double sca
     return mixResourceKey(key, scaleBits);
 }
 
+static uint64_t glyphProxyKey(CTFontRef font, CGGlyph glyph) {
+    uint64_t key = 1469598103934665603ull;
+    key = mixResourceKey(key, reinterpret_cast<uintptr_t>(font));
+    return mixResourceKey(key, glyph);
+}
+
 static bool uploadFits(MetalRenderer* renderer, uint64_t bytes) {
     return renderer->frameUploadBytes == 0 || renderer->frameUploadBytes + bytes <= kFrameUploadCap;
 }
@@ -5199,6 +5220,22 @@ static void noteCompletedFrame(MetalRenderer* renderer, int64_t frame) {
     int64_t completed = renderer->completedFrame.load();
     while (completed < frame && !renderer->completedFrame.compare_exchange_weak(completed, frame)) {
     }
+}
+
+static void awaitFrame(MetalRenderer* renderer, int64_t frame) {
+    if (frame <= renderer->completedFrame.load()) {
+        return;
+    }
+    id<MTLCommandBuffer> latest = nil;
+    int64_t latestFrame = -1;
+    for (size_t index = 0; index < renderer->committedFrames.size(); ++index) {
+        int64_t committed = renderer->committedFrames[index];
+        if (committed <= frame && committed > latestFrame) {
+            latestFrame = committed;
+            latest = renderer->committedBuffers[index];
+        }
+    }
+    [latest waitUntilCompleted];
 }
 
 static uint64_t imageKey(
@@ -5280,11 +5317,11 @@ static bool allocateAtlasEntry(
             continue;
         }
 
-        int64_t completed = renderer->completedFrame.load();
+        int64_t building = renderer->frameCount - 1;
         size_t victim = atlas.pages.size();
         for (size_t index = 0; index < atlas.pages.size(); ++index) {
             int64_t lastUsed = atlas.pages[index].lastUsedFrame;
-            if (lastUsed > completed) {
+            if (lastUsed >= building) {
                 continue;
             }
             if (victim == atlas.pages.size() || lastUsed < atlas.pages[victim].lastUsedFrame) {
@@ -5295,6 +5332,7 @@ static bool allocateAtlasEntry(
             return false;
         }
         AtlasPage& page = atlas.pages[victim];
+        awaitFrame(renderer, page.lastUsedFrame);
         page.shelfX = 0;
         page.shelfY = 0;
         page.shelfHeight = 0;
@@ -5378,9 +5416,9 @@ static bool rasterizeGlyph(
 }
 
 static void touchGlyphEntry(MetalRenderer* renderer, AtlasEntry& entry) {
-    entry.lastUsedFrame = renderer->frameCount;
+    entry.lastUsedFrame = renderer->frameCount - 1;
     if (entry.valid) {
-        renderer->glyphAtlas.pages[entry.page].lastUsedFrame = renderer->frameCount;
+        renderer->glyphAtlas.pages[entry.page].lastUsedFrame = renderer->frameCount - 1;
     }
 }
 
@@ -5398,6 +5436,9 @@ static AtlasEntry* ensureGlyphEntry(
         touchGlyphEntry(renderer, found->second);
         return &found->second;
     }
+    if (renderer->glyphUploadsDeferred) {
+        return nullptr;
+    }
 
     GlyphBitmap bitmap;
     if (!rasterizeGlyph(renderer, font, glyph, subpixel, scale, bitmap)) {
@@ -5407,6 +5448,7 @@ static AtlasEntry* ensureGlyphEntry(
     }
     uint64_t bytes = static_cast<uint64_t>(bitmap.width) * bitmap.height;
     if (!uploadFits(renderer, bytes)) {
+        renderer->glyphUploadsDeferred = true;
         return nullptr;
     }
     uint16_t page = 0;
@@ -5422,6 +5464,7 @@ static AtlasEntry* ensureGlyphEntry(
         x,
         y
     )) {
+        renderer->glyphUploadsDeferred = true;
         return nullptr;
     }
     [renderer->glyphAtlas.pages[page].texture
@@ -5441,11 +5484,26 @@ static AtlasEntry* ensureGlyphEntry(
     entry.height = static_cast<uint16_t>(bitmap.height);
     entry.offsetX = static_cast<int16_t>(bitmap.left);
     entry.offsetTopY = static_cast<int16_t>(bitmap.top);
-    entry.lastUsedFrame = renderer->frameCount;
+    entry.scale = static_cast<float>(scale);
+    entry.lastUsedFrame = renderer->frameCount - 1;
     entry.valid = true;
-    renderer->glyphAtlas.pages[page].lastUsedFrame = renderer->frameCount;
+    renderer->glyphAtlas.pages[page].lastUsedFrame = renderer->frameCount - 1;
     auto inserted = renderer->glyphEntries.emplace(key, entry);
+    renderer->glyphProxies[glyphProxyKey(font, glyph)] = key;
     return &inserted.first->second;
+}
+
+static AtlasEntry* findGlyphProxy(MetalRenderer* renderer, CTFontRef font, CGGlyph glyph) {
+    auto proxy = renderer->glyphProxies.find(glyphProxyKey(font, glyph));
+    if (proxy == renderer->glyphProxies.end()) {
+        return nullptr;
+    }
+    auto found = renderer->glyphEntries.find(proxy->second);
+    if (found == renderer->glyphEntries.end() || !found->second.valid || !(found->second.scale > 0)) {
+        return nullptr;
+    }
+    touchGlyphEntry(renderer, found->second);
+    return &found->second;
 }
 
 static void applyContentMask(
@@ -5483,23 +5541,24 @@ static void emitGlyphInstance(
     double baseline,
     double glyphY,
     const RunGlyph& glyph,
-    const GlyphPaint& paint
+    const GlyphPaint& paint,
+    double ratio = 1
 ) {
     MetalRenderer* renderer = state.renderer;
     Instance instance = {};
     applyContentMask(renderer, op.contentMask, state, instance);
-    instance.rect[0] = static_cast<float>(penFloor + entry.offsetX);
+    instance.rect[0] = static_cast<float>(penFloor + entry.offsetX * ratio);
     instance.rect[1] = static_cast<float>(
-        baseline - glyphY * state.matrix[3] * renderer->scale - entry.offsetTopY
+        baseline - glyphY * state.matrix[3] * renderer->scale - entry.offsetTopY * ratio
     );
-    instance.rect[2] = entry.width;
-    instance.rect[3] = entry.height;
+    instance.rect[2] = static_cast<float>(entry.width * ratio);
+    instance.rect[3] = static_cast<float>(entry.height * ratio);
     instance.params[0] = entry.x / textureWidth;
     instance.params[1] = entry.y / textureHeight;
     instance.params[2] = entry.width / textureWidth;
     instance.params[3] = entry.height / textureHeight;
     instance.color = glyph.hasColor ? glyph.color : op.color;
-    instance.kind = 2;
+    instance.kind = ratio == 1 ? 2 : 2 | kInstanceLinear;
     instance.opacity = 1;
     instance.padding[0] = paint.record;
     emitInstance(state, PipelineMask, texture, instance, paint.shader);
@@ -5669,6 +5728,7 @@ static void expandGlyphRun(
         run.entryScale = glyphScale;
         run.entryEpoch = renderer->glyphAtlas.evictions;
     }
+    bool stand = false;
     const float atlasSize = static_cast<float>(kAtlasSize);
     double blockX = op.x * zoom + state.matrix[4];
     double blockY = op.y * zoom + state.matrix[5];
@@ -5699,7 +5759,24 @@ static void expandGlyphRun(
                 }
                 run.entries[slot] = entry;
             }
-            if (!entry) {
+            AtlasEntry* proxy = entry ? nullptr : findGlyphProxy(renderer, font, glyph.glyph);
+            if (proxy) {
+                stand = true;
+                emitGlyphInstance(
+                    state,
+                    op,
+                    *proxy,
+                    renderer->glyphAtlas.pages[proxy->page].texture,
+                    atlasSize,
+                    atlasSize,
+                    penFloor,
+                    baseline,
+                    glyph.y,
+                    glyph,
+                    paint,
+                    glyphScale / proxy->scale
+                );
+            } else if (!entry) {
                 emitFallbackGlyph(
                     state,
                     op,
@@ -5728,6 +5805,9 @@ static void expandGlyphRun(
                 );
             }
         }
+    }
+    if (stand) {
+        renderer->glyphRedraw.store(true);
     }
 }
 
@@ -12659,6 +12739,7 @@ extern "C" void brixGuiMetalPacketBegin(void* pointer) {
     renderer->packetIndex = (renderer->packetIndex + 1) % 3;
     renderer->fallbackTextures[renderer->packetIndex].clear();
     renderer->frameUploadBytes = 0;
+    renderer->glyphUploadsDeferred = false;
     renderer->frameTextureUploadBytes = 0;
     renderer->frameTileBytes = 0;
     releaseCanvasTextures(renderer);
@@ -14252,6 +14333,8 @@ static bool encodeFrame(
         dispatch_semaphore_signal(inflight);
     }];
     [commandBuffer commit];
+    renderer->committedBuffers[static_cast<size_t>(frameId) & 3] = commandBuffer;
+    renderer->committedFrames[static_cast<size_t>(frameId) & 3] = frameId;
     if (defersPresent) {
         enqueuePresent(renderer, frameId, damageSerial);
         return true;
@@ -14463,7 +14546,8 @@ extern "C" int64_t brixGuiMetalRendererStatValue(void* pointer, int32_t field) {
         return static_cast<int64_t>(renderer->fillOverflows.load());
     }
     if (field == BxGuiMetalStatFillRedrawPending) {
-        return renderer->fillRedraw.load() || renderer->shaderCompiles->landed.load() ? 1 : 0;
+        return renderer->fillRedraw.load() || renderer->glyphRedraw.load() ||
+            renderer->shaderCompiles->landed.load() ? 1 : 0;
     }
     if (field == BxGuiMetalStatFillFramesPending) {
         return renderer->fillFramesPending.load() + renderer->shaderCompiles->pending.load();
@@ -15586,5 +15670,6 @@ extern "C" bool brixGuiMetalRendererTakeFillRedraw(void* pointer) {
     }
     bool landed = renderer->shaderCompiles->landed.exchange(false);
     bool lost = restoreTarget(renderer);
-    return renderer->fillRedraw.exchange(false) || landed || lost;
+    bool glyphs = renderer->glyphRedraw.exchange(false);
+    return renderer->fillRedraw.exchange(false) || glyphs || landed || lost;
 }
