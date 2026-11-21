@@ -624,6 +624,9 @@ struct RunRecord {
     std::vector<AtlasEntry*> entries;
     double entryScale = 0;
     uint64_t entryEpoch = 0;
+    float emSize = 0;
+    float xHeight = 0;
+    bool tinted = false;
 };
 
 struct FrameStats {
@@ -5590,6 +5593,45 @@ static GlyphPaint glyphRunPaint(ExpandState& state, const GlyphRunOp& op) {
     return paint;
 }
 
+static const double kGreekEmPixels = 4.0;
+static const float kGreekCoverage = 0.37f;
+
+static void emitGreekedRun(ExpandState& state, const GlyphRunOp& op, const RunRecord& run, double zoom) {
+    MetalRenderer* renderer = state.renderer;
+    double scale = renderer->scale;
+    double blockX = op.x * zoom + state.matrix[4];
+    double blockY = op.y * zoom + state.matrix[5];
+    double offsetY = (op.height - run.height) / 2.0;
+    double height = run.xHeight * zoom * scale;
+    for (const RunLine& line : run.lines) {
+        if (!line.glyphCount) {
+            continue;
+        }
+        double offsetX = 0;
+        if (op.alignment == 1) {
+            offsetX = (op.width - line.width) / 2.0;
+        } else if (op.alignment == 2) {
+            offsetX = op.width - line.width;
+        }
+        double baseline = (blockY + (offsetY + line.baseline) * zoom) * scale;
+        double left = (blockX + (offsetX + run.glyphs[line.glyphStart].x) * zoom) * scale;
+        double right = (blockX + (offsetX + line.width) * zoom) * scale;
+        if (!(right > left) || !(height > 0)) {
+            continue;
+        }
+        Instance instance = {};
+        applyContentMask(renderer, op.contentMask, state, instance);
+        instance.rect[0] = static_cast<float>(left);
+        instance.rect[1] = static_cast<float>(baseline - height);
+        instance.rect[2] = static_cast<float>(right - left);
+        instance.rect[3] = static_cast<float>(height);
+        instance.color = op.color;
+        instance.kind = 0;
+        instance.opacity = kGreekCoverage;
+        emitInstance(state, PipelineTier1, nil, instance);
+    }
+}
+
 static void expandGlyphRun(
     ExpandState& state,
     const GlyphRunOp& op,
@@ -5608,6 +5650,10 @@ static void expandGlyphRun(
     GlyphPaint paint = glyphRunPaint(state, op);
     double zoom = state.matrix[0];
     double glyphScale = renderer->scale * zoom;
+    if (run.emSize * glyphScale < kGreekEmPixels && !paint.shader && !run.tinted) {
+        emitGreekedRun(state, op, run, zoom);
+        return;
+    }
     size_t slots = run.glyphs.size() * 4;
     if (run.entryScale != glyphScale || run.entryEpoch != renderer->glyphAtlas.evictions ||
             run.entries.size() != slots) {
@@ -11529,6 +11575,9 @@ extern "C" int64_t brixGuiMetalRunRegister(void* pointer, void* textLayout) {
     run.lines.clear();
     run.fonts.clear();
     run.entries.clear();
+    run.emSize = 0;
+    run.xHeight = 0;
+    run.tinted = false;
 
     int64_t lineCount = brixGraphicsTextLayoutGetLineCount(textLayout);
     int64_t runCount = brixGraphicsTextLayoutGetRunCount(textLayout);
@@ -11565,6 +11614,9 @@ extern "C" int64_t brixGuiMetalRunRegister(void* pointer, void* textLayout) {
                 &runColor
             );
             uint16_t fontIndex = internRunFont(run, font);
+            run.emSize = std::max(run.emSize, static_cast<float>(CTFontGetSize(font)));
+            run.xHeight = std::max(run.xHeight, static_cast<float>(CTFontGetXHeight(font)));
+            run.tinted = run.tinted || hasRunColor;
             std::vector<uint16_t> glyphs(static_cast<size_t>(count));
             std::vector<double> positions(static_cast<size_t>(count) * 2);
             brixGraphicsTextLayoutGetRunGlyphs(
