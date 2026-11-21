@@ -2447,3 +2447,67 @@ tail: List index -1 out of range
 (0, true, true, true)
 (0, 2)
 ```
+
+### A list item popped during a mark survives that cycle.
+
+```brix
+(import /BxGC/BxGCTest.h)
+(blank)
+
+(main
+  (let list (call filled-list 7))
+  (call C:brixGCStartConcurrentMark)
+  (let popped (call (. list pop)))
+  (call C:brixGCFinishConcurrentMark)
+  (call C:brixCollect)
+  (print (if-expr (call C:brixGCVerifyObject (as popped Pointer)) (str "alive " (. popped value)) "lost"))
+)
+
+(fn-do + filled-list (of List Cell)
+  (param value Int)
+  (let list (call (of List Cell)))
+  (+= list (call Cell value))
+  (return list)
+)
+
+(type + Cell
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
+```
+
+```output
+alive 7
+```
+
+### A string in a tuple popped from a list during a mark survives that cycle.
+
+```brix
+(import /BxGC/BxGCTest.h)
+(blank)
+
+(main
+  (let list (call filled-list 9))
+  (call C:brixGCStartConcurrentMark)
+  (let popped (call (. list pop)))
+  (call C:brixGCFinishConcurrentMark)
+  (call C:brixCollect)
+  (let text ([] popped 1))
+  (let start (as (- (. (as text Pointer) address) 16) Pointer))
+  (print (if-expr (call C:brixGCVerifyObject start) (str "alive " text) "lost"))
+)
+
+(fn-do + filled-list (list (tuple Int String))
+  (param value Int)
+  (let list (list (tuple Int String)))
+  (+= list (tuple value (str "item " value)))
+  (return list)
+)
+```
+
+```output
+alive item 9
+```

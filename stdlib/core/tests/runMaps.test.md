@@ -808,6 +808,55 @@ true
 true
 ```
 
+### A map value deleted or cleared during a mark survives that cycle.
+
+```brix
+(import /BxGC/BxGCTest.h)
+(blank)
+
+(main
+  (let deleted-from (call filled-map 9))
+  (call C:brixGCStartConcurrentMark)
+  (let deleted (!! ([] deleted-from 1u32)))
+  (-= ([] deleted-from 1u32))
+  (call C:brixGCFinishConcurrentMark)
+  (call C:brixCollect)
+  (print (call survivor deleted))
+  (let cleared-from (call filled-map 10))
+  (call C:brixGCStartConcurrentMark)
+  (let cleared (!! ([] cleared-from 1u32)))
+  (call (. cleared-from clear))
+  (call C:brixGCFinishConcurrentMark)
+  (call C:brixCollect)
+  (print (call survivor cleared))
+)
+
+(fn-do + filled-map (of Map U32 MapClearBox)
+  (param value Int)
+  (let map (call (of Map U32 MapClearBox)))
+  (= ([] map 1u32) (call MapClearBox value))
+  (return map)
+)
+
+(fn-do + survivor String
+  (param box MapClearBox)
+  (return (if-expr (call C:brixGCVerifyObject (as box Pointer)) (str "alive " (. box value)) "lost"))
+)
+
+(type + MapClearBox
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
+```
+
+```output
+alive 9
+alive 10
+```
+
 ### Fully colliding keys survive deletion, tombstone reuse, and repeated churn.
 
 ```brix

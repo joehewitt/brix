@@ -241,6 +241,7 @@ extern "C" BRIX_WITHOUT_GC void brixWriteBarrierRecord(char* source, char* value
 extern "C" void brixBenchRecordBarrierCall(void);
 extern "C" BRIX_WITHOUT_GC void brixBulkWriteBarrierFast(
     char* source, char* value, size_t byteSize, void* descriptor);
+extern "C" BRIX_WITHOUT_GC void brixZeroManagedSlots(void* slots, size_t byteSize);
 
 extern "C" BRIX_WITHOUT_GC unsigned int brixGenerateUID();
 

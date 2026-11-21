@@ -4058,6 +4058,115 @@ kept
 1.5, 2.5, 3.5
 ```
 
+### An empty slice from the end of a full array or list points inside its storage, not at the next object.
+
+```brix
+(main
+  (let numbers (call (of Array Int) 4))
+  (let tail ([] numbers (... 4)))
+  (print (tuple (. tail length) (call inside (. tail data) (. numbers data) 4)))
+  (let list (list 1 2 3 4))
+  (let rest ([] list (... 4)))
+  (let storage (. list buffer-pointer))
+  (print (tuple (. rest length) (call inside (. rest buffer-pointer) storage (. list capacity))))
+)
+
+(fn-do + inside Bool
+  (param at (of CPointer Int))
+  (param start (of CPointer Int))
+  (param count Size)
+  (let end (+ (. start address) (* count (. Int size))))
+  (return (and (>= (. at address) (. start address)) (< (. at address) end)))
+)
+```
+
+```output
+(0, true)
+(0, true)
+```
+
+### An empty view from the end of a full array's rows or fields does not keep the next object alive.
+
+```brix
+(import /BxGC/BxGCTest.h)
+(blank)
+
+(main
+  (print (call rows-tail))
+  (print (call x-tail))
+  (print (call y-tail))
+)
+
+(fn-do + rows-tail String
+  (call C:brixCollect)
+  (let items (call (of Array Point) 2))
+  (let start (. (. items data) address))
+  (let adjacent (call dropped-neighbor start))
+  (let witness (call dropped-address))
+  (let tail ([] (. items rows) (..< 2 2)))
+  (let kept (call neighbor-kept start witness))
+  (return (str "rows " (. tail length) " " (or (not adjacent) (not kept))))
+)
+
+(fn-do + x-tail String
+  (call C:brixCollect)
+  (let items (call (of Array Point) 2))
+  (let start (. (. items data) address))
+  (let adjacent (call dropped-neighbor start))
+  (let witness (call dropped-address))
+  (let tail ([] (. items fields x) (..< 2 2)))
+  (let kept (call neighbor-kept start witness))
+  (return (str "x " (. tail length) " " (or (not adjacent) (not kept))))
+)
+
+(fn-do + y-tail String
+  (call C:brixCollect)
+  (let items (call (of Array Point) 2))
+  (let start (. (. items data) address))
+  (let adjacent (call dropped-neighbor start))
+  (let witness (call dropped-address))
+  (let tail ([] (. items fields y) (..< 2 2)))
+  (let kept (call neighbor-kept start witness))
+  (return (str "y " (. tail length) " " (or (not adjacent) (not kept))))
+)
+
+(fn-do + neighbor-kept Bool
+  (param start U64)
+  (param witness U64)
+  (call C:brixGCStartConcurrentMark)
+  (call C:brixGCFinishConcurrentMark)
+  (let kept (call C:brixGCTestObjectMarked (as (+ start 32) Pointer)))
+  (let white (not (call C:brixGCTestObjectMarked (as witness Pointer))))
+  (call C:brixCollect)
+  (return (and kept white))
+)
+
+(fn-do + dropped-address U64
+  (let other (call (of Array Point) 2))
+  (return (. (. other data) address))
+)
+
+(fn-do + dropped-neighbor Bool
+  (param start U64)
+  (for (in attempt (..< 0 16))
+    (let other (call (of Array Point) 2))
+    (return-if true (if (== (. (. other data) address) (+ start 32))))
+  )
+  (return false)
+)
+
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
+```
+
+```output
+rows 0 true
+x 0 true
+y 0 true
+```
+
 ### Ranges with a side left open assign one value to the items of an array.
 
 ```brix

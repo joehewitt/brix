@@ -6675,6 +6675,23 @@ brixBulkWriteBarrierFast(char* source, char* value, size_t byteSize, void* descr
     });
 }
 
+extern "C" void
+brixZeroManagedSlots(void* slots, size_t byteSize) {
+    if (!slots || byteSize == 0) {
+        return;
+    }
+    if (brixGCPhaseNeedsMarkBarrier(brixGCLoadPublicPhase())) {
+        char** words = static_cast<char**>(slots);
+        size_t count = byteSize / sizeof(char*);
+        for (size_t index = 0; index < count; index++) {
+            if (words[index]) {
+                brixWriteBarrierRecord(reinterpret_cast<char*>(words + index), nullptr);
+            }
+        }
+    }
+    std::memset(slots, 0, byteSize);
+}
+
 extern "C" size_t
 brixGCRuntimeMode() {
     return BX_GC_NEVER_COLLECT ? 1 : 2;
@@ -6995,6 +7012,13 @@ brixWriteBarrierFast(char*, char*) {
 
 extern "C" void
 brixBulkWriteBarrierFast(char*, char*, size_t, void*) {
+}
+
+extern "C" void
+brixZeroManagedSlots(void* slots, size_t byteSize) {
+    if (slots && byteSize != 0) {
+        std::memset(slots, 0, byteSize);
+    }
 }
 
 extern "C" void

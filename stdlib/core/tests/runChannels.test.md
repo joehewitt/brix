@@ -602,6 +602,69 @@ true
 drained
 ```
 
+### A message read from a buffered channel during a mark survives that cycle
+
+```brix
+(import /BxGC/BxGCTest.h)
+(blank)
+
+(main
+  (let channel (call filled-channel 8))
+  (call C:brixGCStartConcurrentMark)
+  (let read (!! (<- channel)))
+  (call C:brixGCFinishConcurrentMark)
+  (call C:brixCollect)
+  (print (if-expr (call C:brixGCVerifyObject (as read Pointer)) (str "alive " (. read value)) "lost"))
+)
+
+(fn-do + filled-channel (of SyncBufferedChannel Node)
+  (param value Int)
+  (let channel (call (of SyncBufferedChannel Node)))
+  (<- channel (call Node value))
+  (return channel)
+)
+
+(type + Node
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
+```
+
+```output
+alive 8
+```
+
+### A string read from a buffered channel during a mark survives that cycle
+
+```brix
+(import /BxGC/BxGCTest.h)
+(blank)
+
+(main
+  (let channel (call filled-channel 8))
+  (call C:brixGCStartConcurrentMark)
+  (let read (!! (<- channel)))
+  (call C:brixGCFinishConcurrentMark)
+  (call C:brixCollect)
+  (let start (as (- (. (as read Pointer) address) 16) Pointer))
+  (print (if-expr (call C:brixGCVerifyObject start) (str "alive " read) "lost"))
+)
+
+(fn-do + filled-channel (of SyncBufferedChannel String)
+  (param value Int)
+  (let channel (call (of SyncBufferedChannel String)))
+  (<- channel (str "item " value))
+  (return channel)
+)
+```
+
+```output
+alive item 8
+```
+
 ### An event reached through an optional chain takes a write when the chain holds a value, and skips it when it is null
 
 ```brix

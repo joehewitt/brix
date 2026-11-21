@@ -315,7 +315,12 @@
     (param index Index)
     (throw (call OutOfBoundsError (str "Set out of bounds (" index " / " size ")")) (if (>= (as index UInt) (as size UInt))))
     (blank)
-    (call C:memset (+ data index) 0 (. Value size))
+    (if (. Value is-number)
+      (call C:memset (+ data index) 0 (. Value size))
+      (else
+        (call C:brixZeroManagedSlots (+ data index) (. Value size))
+      )
+    )
   )
   (fn-do + map _
     (param using (fn-type Value (param byte Value) (param index Index)))
@@ -949,12 +954,13 @@
       (throw (call Panic "Only increments of 1 are currently supported") (if (!= (. normal increment) 1)))
       (throw (call OutOfBoundsError (str "Range out of bounds (" out-index " / " size ")")) (if (or (> (as start UInt) (as size UInt)) (> end size) (< end start))))
     )
-    (call This (+ (as storage (of CPointer Item)) start) (- end start))
+    (call This (if-expr (== start end) base (+ base start)) (- end start))
     (where
       (lazy normal (call (. range forward)))
       (lazy start (. normal start))
       (lazy end (. normal end))
       (lazy out-index (if-expr (> end 0) (- end 1) end))
+      (lazy base (as storage (of CPointer Item)))
     )
   )
   (fn-expr + (prefix ! this) _
