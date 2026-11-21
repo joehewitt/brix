@@ -38,6 +38,8 @@
   (prop _ records (list PyramidFrame))
   (prop _ starts (list U64))
   (prop _ last-frame I64 (= -1))
+  (prop _ tile-peak I64)
+  (prop _ pyramid-peak I64)
   (fn-do + open _
     (= state-key null)
     (= size window-bench-size)
@@ -124,6 +126,8 @@
   )
   (fn-do _ note-frame _
     (param segment Size)
+    (= tile-peak (call max tile-peak tile-bytes))
+    (= pyramid-peak (call max pyramid-peak pyramid-tile-bytes))
     (let frame last-metal-frame-id)
     (let times last-frame-times)
     (return-if (if (or (== frame last-frame) (not times))))
@@ -156,6 +160,10 @@
     (probe-count gui.bench.board.jump-settle-us (call settle-us pyramid-jump))
     (probe-count gui.bench.board.fit-encode-max-us (call window-bench-percentile (call encodes pyramid-fit pyramid-fit 100.0) 100))
     (probe-count gui.bench.board.fit-settle-us (call settle-us pyramid-fit))
+    (probe-count gui.bench.board.tile-bytes-peak (as tile-peak U64))
+    (probe-count gui.bench.board.pyramid-bytes-peak (as pyramid-peak U64))
+    (probe-count gui.bench.board.pyramid-cap-bytes (as pyramid-cap-bytes U64))
+    (probe-count gui.bench.board.wide-gamut (if-expr is-wide-gamut 1u64 0u64))
   )
   (fn-do _ encodes (list U64)
     (param first Size)

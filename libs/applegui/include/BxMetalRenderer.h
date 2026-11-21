@@ -127,6 +127,15 @@ enum BxGuiMetalStatField {
     BxGuiMetalStatImageTileCount = 37,
     BxGuiMetalStatTileGpuNanos = 38,
     BxGuiMetalStatTilesRendered = 39,
+    BxGuiMetalStatTileBytes = 40,
+    BxGuiMetalStatPyramidTileBytes = 41,
+    BxGuiMetalStatPyramidCapBytes = 42,
+};
+
+enum BxGuiMetalTilePool {
+    BxGuiMetalTilePoolGeneral = 0,
+    BxGuiMetalTilePoolVisible = 1,
+    BxGuiMetalTilePoolAhead = 2,
 };
 
 extern "C" bool brixGuiMetalRendererIsAvailable(void);
@@ -347,8 +356,13 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     double pointsWidth,
     double pointsHeight,
     int32_t slotX,
-    int32_t slotY
+    int32_t slotY,
+    int32_t pool
 );
+extern "C" bool brixGuiMetalTileFailed(void* renderer, uint64_t retainedKey, uint32_t generation);
+extern "C" bool brixGuiMetalRendererPyramidFull(void* renderer);
+extern "C" bool brixGuiMetalRendererTakeTileIsolate(void* renderer);
+extern "C" int64_t brixGuiMetalRendererPyramidTileLimit(void* renderer, int32_t pixels);
 extern "C" int64_t brixGuiMetalPacketCommitTiles(void* renderer);
 extern "C" void brixGuiMetalChunkRelease(void* renderer, uint64_t retainedKey);
 extern "C" void brixGuiMetalChunkReleaseAll(void* renderer);

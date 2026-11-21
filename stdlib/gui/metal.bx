@@ -248,6 +248,15 @@
   (fn-expr + tiles-rendered I64 :get
     (call stat (. MetalStat tiles-rendered))
   )
+  (fn-expr + tile-bytes I64 :get
+    (call stat (. MetalStat tile-bytes))
+  )
+  (fn-expr + pyramid-tile-bytes I64 :get
+    (call stat (. MetalStat pyramid-tile-bytes))
+  )
+  (fn-expr + pyramid-cap-bytes I64 :get
+    (call stat (. MetalStat pyramid-cap-bytes))
+  )
   (fn-expr + run-count _ :get
     (call stat (. MetalStat run-count))
   )
@@ -720,6 +729,7 @@
     (param points-height F64)
     (param slot-x I32)
     (param slot-y I32)
+    (param pool MetalTilePool (= (. MetalTilePool general)))
     (return
       (call C:brixGuiMetalTileReserve
         (block
@@ -732,9 +742,25 @@
           (arg points-height)
           (arg slot-x)
           (arg slot-y)
+          (arg (as pool I32))
         )
       )
     )
+  )
+  (fn-expr + tile-failed Bool
+    (param retained-key U64)
+    (param generation U32)
+    (call C:brixGuiMetalTileFailed renderer retained-key generation)
+  )
+  (fn-expr + is-pyramid-full Bool :get
+    (call C:brixGuiMetalRendererPyramidFull renderer)
+  )
+  (fn-do + take-tile-isolate Bool
+    (return (call C:brixGuiMetalRendererTakeTileIsolate renderer))
+  )
+  (fn-expr + pyramid-tile-limit I64
+    (param pixels I32)
+    (call C:brixGuiMetalRendererPyramidTileLimit renderer pixels)
   )
   (fn-do + release-chunk _
     (param retained-key U64)
@@ -1035,6 +1061,15 @@
   (variant image-tile-count (= 37))
   (variant tile-gpu-nanos (= 38))
   (variant tiles-rendered (= 39))
+  (variant tile-bytes (= 40))
+  (variant pyramid-tile-bytes (= 41))
+  (variant pyramid-cap-bytes (= 42))
+)
+
+(type + MetalTilePool (is I32)
+  (variant general (= 0))
+  (variant visible (= 1))
+  (variant ahead (= 2))
 )
 
 (type _ MetalPathCapture (is Canvas)

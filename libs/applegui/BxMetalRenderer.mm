@@ -430,6 +430,9 @@ struct TileRecord {
     uint32_t pixelHeight = 0;
     int64_t lastUsedFrame = -1;
     int64_t renderedFrame = -1;
+    uint32_t failedGeneration = 0;
+    uint8_t failures = 0;
+    bool pyramid = false;
 };
 
 struct TileCopy {
@@ -450,6 +453,10 @@ static uint64_t deviceMemoryShare(uint64_t divisor, uint64_t most) {
 static uint64_t tileBudgetBytes() {
     static const uint64_t budget = deviceMemoryShare(32, 256ull * 1024 * 1024);
     return budget;
+}
+
+static uint64_t pyramidBudgetBytes() {
+    return tileBudgetBytes() / 4 * 3;
 }
 
 static uint64_t imageTextureBudgetBytes() {
@@ -483,6 +490,8 @@ static void watchMemoryPressure() {
 }
 
 static const size_t kRetiredTileLimit = 4;
+static const uint8_t kTileFailureLimit = 3;
+static const int64_t kAheadTileKeepFrames = 120;
 
 static const int kAtlasSize = 1024;
 static const int kGlyphAtlasPages = 4;
@@ -1203,9 +1212,14 @@ struct MetalRenderer {
     std::vector<uint32_t> freeTiles;
     std::vector<RetiredTexture> retiredTiles;
     uint64_t tileBytes = 0;
+    uint64_t pyramidBytes = 0;
+    int64_t lastWindowFrame = -1;
+    bool pyramidFull = false;
+    bool tileIsolate = false;
     id<MTLTexture> tileStaging = nil;
     std::vector<TileCopy> tileCopies;
-    std::atomic<int64_t> tileOverflowFrame{-1};
+    std::atomic<int64_t> tileOverflowFrames[4]{{-1}, {-1}, {-1}, {-1}};
+    int64_t tileOverflowSeen[4] = {-1, -1, -1, -1};
     std::atomic<int64_t> tileGpuNanos{0};
     int64_t tilesRendered = 0;
     std::atomic<int64_t> completedFrame{-1};
@@ -1269,6 +1283,7 @@ struct MetalRenderer {
     std::shared_ptr<ShaderCompiles> shaderCompiles = std::make_shared<ShaderCompiles>();
     bool skippedPendingShader = false;
     bool tileGlyphsDeferred = false;
+    bool tileGlyphsMissing = false;
     double fillTime = 0;
     id<MTLTexture> depthTexture = nil;
     std::vector<FillGeometryRecord> fillGeometries;
@@ -5815,7 +5830,11 @@ static void expandGlyphRun(
             }
             AtlasEntry* proxy = deferred && !tileFrame ? findGlyphProxy(renderer, font, glyph.glyph) : nullptr;
             if (!entry && tileFrame) {
-                renderer->tileGlyphsDeferred = true;
+                if (deferred) {
+                    renderer->tileGlyphsDeferred = true;
+                } else {
+                    renderer->tileGlyphsMissing = true;
+                }
             } else if (proxy) {
                 stand = true;
                 emitGlyphInstance(
@@ -12870,6 +12889,7 @@ extern "C" double brixGuiMetalRendererTileDamageValue(void* pointer, int32_t ind
 }
 
 static void evictTiles(MetalRenderer* renderer, uint64_t budget, int64_t before, uint32_t protectedHandle);
+static void settleTileOverflows(MetalRenderer* renderer);
 
 extern "C" void brixGuiMetalPacketBegin(void* pointer) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
@@ -12881,6 +12901,7 @@ extern "C" void brixGuiMetalPacketBegin(void* pointer) {
     if (restoreTarget(renderer)) {
         renderer->fillRedraw.store(true);
     }
+    settleTileOverflows(renderer);
     uint64_t pressure = memoryPressureCount.load(std::memory_order_acquire);
     if (pressure != renderer->memoryPressureSeen) {
         renderer->memoryPressureSeen = pressure;
@@ -13798,33 +13819,132 @@ static id<MTLTexture> takeRetiredTileTexture(
     return nil;
 }
 
+static uint64_t formatTileBytes(size_t width, size_t height, MTLPixelFormat format) {
+    uint64_t bytes = format == MTLPixelFormatBGRA8Unorm ? 4 : 8;
+    return static_cast<uint64_t>(width) * height * bytes;
+}
+
+static void untrackTileBytes(MetalRenderer* renderer, const TileRecord& tile) {
+    uint64_t bytes = tileTextureBytes(tile.texture);
+    renderer->tileBytes -= std::min(renderer->tileBytes, bytes);
+    if (tile.pyramid) {
+        renderer->pyramidBytes -= std::min(renderer->pyramidBytes, bytes);
+    }
+}
+
+static void trackTileBytes(MetalRenderer* renderer, const TileRecord& tile) {
+    uint64_t bytes = tileTextureBytes(tile.texture);
+    renderer->tileBytes += bytes;
+    if (tile.pyramid) {
+        renderer->pyramidBytes += bytes;
+    }
+}
+
 static void releaseTileRecord(MetalRenderer* renderer, uint32_t handle) {
     TileRecord& tile = renderer->tiles[handle];
-    renderer->tileBytes -= std::min(renderer->tileBytes, tileTextureBytes(tile.texture));
+    untrackTileBytes(renderer, tile);
     renderer->tileByKey.erase(tile.key);
     tile = TileRecord();
     renderer->freeTiles.push_back(handle);
 }
 
+static int64_t pyramidKeepFrame(MetalRenderer* renderer, int64_t before) {
+    return renderer->lastWindowFrame >= 0 ? std::min(before, renderer->lastWindowFrame) : before;
+}
+
+static uint32_t oldestTile(MetalRenderer* renderer, bool pyramid, int64_t before, uint32_t protectedHandle) {
+    uint32_t victim = UINT32_MAX;
+    int64_t oldest = INT64_MAX;
+    for (size_t index = 0; index < renderer->tiles.size(); ++index) {
+        const TileRecord& tile = renderer->tiles[index];
+        if (!tile.texture || index == protectedHandle || tile.pyramid != pyramid ||
+            tile.lastUsedFrame >= before) {
+            continue;
+        }
+        if (tile.lastUsedFrame < oldest) {
+            oldest = tile.lastUsedFrame;
+            victim = static_cast<uint32_t>(index);
+        }
+    }
+    return victim;
+}
+
 static void evictTiles(MetalRenderer* renderer, uint64_t budget, int64_t before, uint32_t protectedHandle) {
     while (renderer->tileBytes > budget) {
-        uint32_t victim = UINT32_MAX;
-        int64_t oldest = INT64_MAX;
-        for (size_t index = 0; index < renderer->tiles.size(); ++index) {
-            const TileRecord& tile = renderer->tiles[index];
-            if (!tile.texture || index == protectedHandle ||
-                tile.lastUsedFrame >= before) {
-                continue;
-            }
-            if (tile.lastUsedFrame < oldest) {
-                oldest = tile.lastUsedFrame;
-                victim = static_cast<uint32_t>(index);
-            }
+        uint32_t victim = oldestTile(renderer, true, pyramidKeepFrame(renderer, before), protectedHandle);
+        if (victim == UINT32_MAX) {
+            victim = oldestTile(renderer, false, before, protectedHandle);
         }
         if (victim == UINT32_MAX) {
             return;
         }
         releaseTileRecord(renderer, victim);
+    }
+}
+
+static bool evictPyramidTiles(MetalRenderer* renderer, uint64_t budget, uint32_t protectedHandle, bool ahead) {
+    int64_t before = pyramidKeepFrame(renderer, renderer->frameCount);
+    if (ahead) {
+        before = std::min(before, renderer->frameCount - kAheadTileKeepFrames);
+    }
+    while (renderer->pyramidBytes > budget) {
+        uint32_t victim = oldestTile(renderer, true, before, protectedHandle);
+        if (victim == UINT32_MAX) {
+            return false;
+        }
+        releaseTileRecord(renderer, victim);
+    }
+    return true;
+}
+
+static bool isOverflowFrame(MetalRenderer* renderer, int64_t frame) {
+    return frame >= 0 && renderer->tileOverflowFrames[frame & 3].load() == frame;
+}
+
+static void noteTileFailure(MetalRenderer* renderer, TileRecord& tile, uint32_t generation) {
+    if (tile.failedGeneration != generation) {
+        tile.failedGeneration = generation;
+        tile.failures = 0;
+    }
+    if (tile.failures < kTileFailureLimit) {
+        ++tile.failures;
+    }
+    if (tile.failures >= kTileFailureLimit && tile.texture) {
+        untrackTileBytes(renderer, tile);
+        retireTileTexture(renderer, tile.texture, tile.lastUsedFrame);
+        tile.texture = nil;
+    }
+}
+
+static void rejectPyramidTiles(MetalRenderer* renderer, const std::vector<uint32_t>& handles) {
+    if (handles.size() == 1) {
+        TileRecord& tile = renderer->tiles[handles[0]];
+        noteTileFailure(renderer, tile, tile.generation);
+    }
+    renderer->tileIsolate = true;
+}
+
+static void settleTileOverflows(MetalRenderer* renderer) {
+    for (size_t slot = 0; slot < 4; ++slot) {
+        int64_t frame = renderer->tileOverflowFrames[slot].load();
+        if (frame < 0 || frame == renderer->tileOverflowSeen[slot]) {
+            continue;
+        }
+        renderer->tileOverflowSeen[slot] = frame;
+        std::vector<uint32_t> rejected;
+        for (size_t index = 0; index < renderer->tiles.size(); ++index) {
+            TileRecord& tile = renderer->tiles[index];
+            if (tile.renderedFrame != frame) {
+                continue;
+            }
+            tile.renderedFrame = -1;
+            if (tile.pyramid) {
+                rejected.push_back(static_cast<uint32_t>(index));
+            }
+        }
+        if (!rejected.empty()) {
+            rejectPyramidTiles(renderer, rejected);
+        }
     }
 }
 
@@ -13875,7 +13995,7 @@ extern "C" uint64_t brixGuiMetalTileUpsertCanvas(
         isTileFrameComplete(renderer, tile.lastUsedFrame)) {
         texture = tile.texture;
     } else {
-        renderer->tileBytes -= std::min(renderer->tileBytes, tileTextureBytes(tile.texture));
+        untrackTileBytes(renderer, tile);
         retireTileTexture(renderer, tile.texture, tile.lastUsedFrame);
         tile.texture = nil;
         texture = takeRetiredTileTexture(renderer, width, height, MTLPixelFormatBGRA8Unorm);
@@ -13899,7 +14019,8 @@ extern "C" uint64_t brixGuiMetalTileUpsertCanvas(
             renderer->freeTiles.push_back(handle);
             return 0;
         }
-        renderer->tileBytes += tileTextureBytes(texture);
+        tile.texture = texture;
+        trackTileBytes(renderer, tile);
     }
     [texture replaceRegion:MTLRegionMake2D(0, 0, width, height)
                mipmapLevel:0
@@ -13934,10 +14055,46 @@ extern "C" uint64_t brixGuiMetalTileLookupRendered(
     const TileRecord& tile = renderer->tiles[found->second];
     if (tile.generation != generation || tile.texture == nil ||
             tile.texture.pixelFormat != renderer->layerFormat ||
-            tile.renderedFrame < 0 || tile.renderedFrame == renderer->tileOverflowFrame.load()) {
+            tile.renderedFrame < 0 || isOverflowFrame(renderer, tile.renderedFrame)) {
         return 0;
     }
     return found->second + 1;
+}
+
+extern "C" bool brixGuiMetalTileFailed(void* pointer, uint64_t retainedKey, uint32_t generation) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    if (!renderer) {
+        return false;
+    }
+    auto found = renderer->tileByKey.find(retainedKey);
+    if (found == renderer->tileByKey.end()) {
+        return false;
+    }
+    const TileRecord& tile = renderer->tiles[found->second];
+    return tile.failedGeneration == generation && tile.failures >= kTileFailureLimit;
+}
+
+extern "C" bool brixGuiMetalRendererPyramidFull(void* pointer) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    return renderer && renderer->pyramidFull;
+}
+
+extern "C" bool brixGuiMetalRendererTakeTileIsolate(void* pointer) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    if (!renderer || !renderer->tileIsolate) {
+        return false;
+    }
+    renderer->tileIsolate = false;
+    return true;
+}
+
+extern "C" int64_t brixGuiMetalRendererPyramidTileLimit(void* pointer, int32_t pixels) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    if (!renderer || pixels <= 0) {
+        return 0;
+    }
+    size_t side = static_cast<size_t>(pixels);
+    return static_cast<int64_t>(pyramidBudgetBytes() / formatTileBytes(side, side, renderer->layerFormat));
 }
 
 extern "C" uint64_t brixGuiMetalTileReserve(
@@ -13949,7 +14106,8 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     double pointsWidth,
     double pointsHeight,
     int32_t slotX,
-    int32_t slotY
+    int32_t slotY,
+    int32_t pool
 ) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
     if (!renderer || !renderer->currentPacket || pixelWidth <= 0 || pixelHeight <= 0 ||
@@ -13960,15 +14118,36 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     size_t width = static_cast<size_t>(pixelWidth);
     size_t height = static_cast<size_t>(pixelHeight);
     MTLPixelFormat format = renderer->layerFormat;
+    bool pyramid = pool != BxGuiMetalTilePoolGeneral;
+    if (pyramid) {
+        renderer->pyramidFull = false;
+        auto existing = renderer->tileByKey.find(retainedKey);
+        uint32_t held = existing != renderer->tileByKey.end() ? existing->second : UINT32_MAX;
+        uint64_t holding = held != UINT32_MAX ? tileTextureBytes(renderer->tiles[held].texture) : 0;
+        uint64_t needed = formatTileBytes(width, height, format);
+        uint64_t budget = pyramidBudgetBytes();
+        uint64_t room = budget + holding > needed ? budget + holding - needed : 0;
+        bool fits = renderer->pyramidBytes <= room ||
+            evictPyramidTiles(renderer, room, held, pool == BxGuiMetalTilePoolAhead);
+        if (!fits) {
+            renderer->pyramidFull = true;
+            return 0;
+        }
+    }
     uint32_t handle = tileHandleFor(renderer, retainedKey);
     TileRecord& tile = renderer->tiles[handle];
+    if (tile.pyramid != pyramid) {
+        untrackTileBytes(renderer, tile);
+        tile.pyramid = pyramid;
+        trackTileBytes(renderer, tile);
+    }
     id<MTLTexture> texture = nil;
     if (tile.texture && tile.texture.width == width && tile.texture.height == height &&
         tile.texture.pixelFormat == format && tile.texture.storageMode == MTLStorageModePrivate &&
         isTileFrameComplete(renderer, tile.lastUsedFrame)) {
         texture = tile.texture;
     } else {
-        renderer->tileBytes -= std::min(renderer->tileBytes, tileTextureBytes(tile.texture));
+        untrackTileBytes(renderer, tile);
         retireTileTexture(renderer, tile.texture, tile.lastUsedFrame);
         tile.texture = nil;
         texture = takeRetiredTileTexture(renderer, width, height, format);
@@ -13993,7 +14172,8 @@ extern "C" uint64_t brixGuiMetalTileReserve(
             renderer->freeTiles.push_back(handle);
             return 0;
         }
-        renderer->tileBytes += tileTextureBytes(texture);
+        tile.texture = texture;
+        trackTileBytes(renderer, tile);
     }
     tile.texture = texture;
     tile.key = retainedKey;
@@ -14037,7 +14217,17 @@ static bool ensureTileStaging(MetalRenderer* renderer) {
     return true;
 }
 
-static void abandonTileCopies(MetalRenderer* renderer) {
+static void abandonTileCopies(MetalRenderer* renderer, bool counted) {
+    std::vector<uint32_t> rejected;
+    for (const TileCopy& copy : renderer->tileCopies) {
+        TileRecord& tile = renderer->tiles[copy.handle];
+        if (counted && tile.pyramid) {
+            rejected.push_back(copy.handle);
+        }
+    }
+    if (!rejected.empty()) {
+        rejectPyramidTiles(renderer, rejected);
+    }
     for (const TileCopy& copy : renderer->tileCopies) {
         TileRecord& tile = renderer->tiles[copy.handle];
         tile.generation = 0;
@@ -14509,7 +14699,7 @@ static bool encodeFrame(
                 renderer->fillOverflows.fetch_add(1);
                 renderer->fillRedraw.store(true);
                 if (tileFrame) {
-                    renderer->tileOverflowFrame.store(frameId);
+                    renderer->tileOverflowFrames[frameId & 3].store(frameId);
                 }
             }
             renderer->fillFramesPending.fetch_sub(1);
@@ -14545,6 +14735,7 @@ static int64_t commitPacket(
     int32_t frameSlot = renderer->packetIndex;
     if (!tiles) {
         renderer->lastFrame = frameSlot;
+        renderer->lastWindowFrame = frameId;
     }
     FrameStats& stats = renderer->frames[frameSlot];
     stats = FrameStats();
@@ -14564,6 +14755,7 @@ static int64_t commitPacket(
     bool encoded = false;
     renderer->skippedPendingShader = false;
     renderer->tileGlyphsDeferred = false;
+    renderer->tileGlyphsMissing = false;
     @autoreleasepool {
         fillCompactSegments(renderer);
         compileRequestedShaders(renderer);
@@ -14623,18 +14815,19 @@ extern "C" int64_t brixGuiMetalPacketCommitTiles(void* pointer) {
         return -1;
     }
     if (renderer->tileCopies.empty() || !ensureTileStaging(renderer)) {
-        abandonTileCopies(renderer);
+        abandonTileCopies(renderer, false);
         renderer->currentPacket = nullptr;
         dispatch_semaphore_signal(renderer->inflight);
         return -1;
     }
     int64_t frameId = commitPacket(renderer, 0, 0, 0, 0, 0, true);
     if (frameId < 0) {
-        abandonTileCopies(renderer);
+        abandonTileCopies(renderer, false);
         return -1;
     }
-    if (renderer->skippedPendingShader || renderer->tileGlyphsDeferred) {
-        abandonTileCopies(renderer);
+    bool waits = renderer->skippedPendingShader || renderer->tileGlyphsDeferred;
+    if (waits || renderer->tileGlyphsMissing) {
+        abandonTileCopies(renderer, !waits);
         return frameId;
     }
     renderer->tilesRendered += static_cast<int64_t>(renderer->tileCopies.size());
@@ -14726,6 +14919,15 @@ extern "C" int64_t brixGuiMetalRendererStatValue(void* pointer, int32_t field) {
             if (run.alive) ++count;
         }
         return count;
+    }
+    if (field == BxGuiMetalStatTileBytes) {
+        return static_cast<int64_t>(renderer->tileBytes);
+    }
+    if (field == BxGuiMetalStatPyramidTileBytes) {
+        return static_cast<int64_t>(renderer->pyramidBytes);
+    }
+    if (field == BxGuiMetalStatPyramidCapBytes) {
+        return static_cast<int64_t>(pyramidBudgetBytes());
     }
     if (field == BxGuiMetalStatFillOverflows) {
         return static_cast<int64_t>(renderer->fillOverflows.load());
