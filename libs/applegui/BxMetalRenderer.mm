@@ -855,6 +855,7 @@ struct ChunkPathSet {
     std::vector<FillStopGPU> stops;
     std::vector<float> shaderArgs;
     std::vector<uint32_t> statePaths;
+    std::vector<uint32_t> spanItems;
 };
 
 struct FillPendingSegment {
@@ -12879,6 +12880,7 @@ extern "C" bool brixGuiMetalPacketAppendItems(
         return false;
     }
     bool hasStates = states && itemStates && stateCount > 1;
+    uint32_t pathSpan = 0;
     renderer->stateStack.clear();
     renderer->stateMaskIds.clear();
     uint64_t visible = order ? orderCount : count;
@@ -13053,7 +13055,15 @@ extern "C" bool brixGuiMetalPacketAppendItems(
             PathOp op = {};
             op.slot = pathSlot;
             op.serial = pathSerial;
-            op.span = item.data3;
+            if (order) {
+                const std::vector<uint32_t>& spanItems = chunkPathSet->spanItems;
+                auto found = std::lower_bound(spanItems.begin(), spanItems.end(), static_cast<uint32_t>(index));
+                op.span = found != spanItems.end() && *found == index
+                    ? static_cast<uint32_t>(found - spanItems.begin())
+                    : UINT32_MAX;
+            } else {
+                op.span = pathSpan++;
+            }
             if ((item.flags & 1u) && clips && item.aux < clipCount) {
                 const BxGuiMetalRect& clip = clips[item.aux];
                 op.contentMask[0] = static_cast<float>(clip.x);
@@ -15055,6 +15065,7 @@ extern "C" int64_t brixGuiMetalChunkPaths(
         set.shaderArgs[index] = static_cast<float>(shaderArgs[index]);
     }
     set.statePaths.clear();
+    set.spanItems.clear();
     uint64_t styled = 0;
     for (uint64_t index = 0; index < count; ++index) {
         const BxGuiMetalDisplayItem& item = items[index];
@@ -15134,6 +15145,7 @@ extern "C" int64_t brixGuiMetalChunkPaths(
             }
         }
         renderer->fillBuild.spans.push_back(span);
+        set.spanItems.push_back(static_cast<uint32_t>(index));
         for (int channel = 0; channel < 4; ++channel) {
             set.palette.push_back(static_cast<float>(style.fill[channel]));
         }
