@@ -129,8 +129,9 @@ they cannot show these. `/gui/bench/fixtures/window-frame-fixture` holds the sha
   `brixGuiEventClockSeconds`, the clock of real event timestamps and Metal presentation times, so
   it counts as `input` and the scroll resampler treats it as real. Latency is a best case, since
   the input always arrives just after a frame.
-- **Work outside the frame.** Work in an `(on tick frames)` handler runs after the frame and shows
-  in no part, so a benchmark that animates there times it with `timed`, reported as `step`.
+- **Animation steps.** Work in an `(on tick frames)` handler runs inside the frame's `tick` part.
+  A benchmark that animates there may also time it with `timed`, reported as `step`, to tell its
+  own work from the clock's.
 - **Rates.** `refresh-us` records the display's refresh interval; compare runs only at equal
   rates.
 

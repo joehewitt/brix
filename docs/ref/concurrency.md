@@ -537,7 +537,9 @@ seen 25
 ```
 
 - **Delivery.** Each subscription gets the values in the order they were published, in a task of
-  its own on the queue of the task that published them. The publisher does not wait for it.
+  its own on the queue of the task that published them. The publisher does not wait for it, except
+  for a value an `AsyncOnDemandChannel` sends with `deliver`; see
+  [More channels](built-in-types.md#more-channels).
 - **Clauses.** `when`, `while` and `until` work as in other loops; see Control flow.
 - **Ending.** `break` ends the subscription. Closing the channel ends every subscription after it
   gets the values already published. The body cannot return a value: `The body of a loop on

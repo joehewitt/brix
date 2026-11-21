@@ -3749,6 +3749,116 @@ on 2
 end
 ```
 
+### An AsyncOnDemandChannel's deliver runs its subscriptions on this worker before it returns, and passes over one a subscriber ends during it
+
+```brix
+(main
+  (let ticker (call Ticker))
+  (let first (call Watcher ticker "first"))
+  (let second (call Watcher ticker "second"))
+  (= (. first ends) second)
+  (call (. ticker deliver) 1)
+  (print "sent 1")
+  (call (. ticker deliver) 2)
+  (print "sent 2")
+  (call (. ticker deliver) 3)
+  (print "sent 3")
+  (call (. first close))
+  (call (. ticker deliver) 4)
+  (print "sent 4")
+)
+
+(type + Ticker
+  (implements (of Usable Void))
+  (prop + ticks _ (:= (call (of AsyncOnDemandChannel Int) this)))
+  (fn-do + deliver _
+    (param value Int)
+    (call (. ticks deliver) value)
+  )
+  (fn-do + begin-using _
+    (print "begin using")
+  )
+  (fn-do + end-using _
+    (print "end using")
+  )
+)
+
+(type + Watcher
+  (prop + ticker Ticker)
+  (prop + name String)
+  (prop + ends (? Watcher))
+  (prop _ watching _
+    (machine
+      (state live
+        (for (on tick (. ticker ticks))
+          (print (str name " heard " tick))
+          (if (and ends (== tick 2))
+            (call (. ends close))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + This _
+    (param ticker _)
+    (param name _)
+  )
+  (fn-do + close _
+    (print (str name " closing"))
+  )
+)
+```
+
+```output
+begin using
+first heard 1
+second heard 1
+sent 1
+first heard 2
+second closing
+sent 2
+first heard 3
+sent 3
+end using
+first closing
+sent 4
+```
+
+### A value an AsyncOnDemandChannel delivers from another worker reaches a subscriber on the queue of the task that subscribed
+
+```brix
+(main
+  (let worker (call Worker 1))
+  (let ticks (call (of AsyncOnDemandChannel Int) (call Source)))
+  (let done (channel Int))
+  (= place "main")
+  (for (on n ticks)
+    (print (str n " on " place))
+    (<- done n)
+  )
+  (do-new (worker: worker)
+    (= place "worker")
+    (call (. ticks deliver) 1)
+  )
+  (print (str "read " (<- done)))
+  (call (. worker stop))
+)
+
+(blank)
+(prop + place _ @thread (= "unset"))
+
+(type + Source
+  (implements (of Usable Void))
+  (fn-do + begin-using _)
+  (fn-do + end-using _)
+)
+```
+
+```output
+1 on main
+read 1
+```
+
 ### An event assigned to a property of the event's Broadcastable is the event's endpoint, as a declaration of that type takes it.
 
 ```brix

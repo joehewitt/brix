@@ -484,7 +484,11 @@ gate opened
 - **`AsyncOnDemandChannel`** is a broadcaster made with a `Usable`. Its first subscription calls
   `begin-using`, and when the last one ends it calls `end-using`, so a source runs only while
   someone listens. Values written with no subscriber are dropped. Timers and signals in the standard
-  library are made this way.
+  library are made this way. `(call (. ticks deliver) 3)`{.brix} sends a value as `<-` does, but
+  runs each subscription made on the current worker before it returns, unless that subscription
+  still has values waiting. A subscription that another one ends during the send does not get the
+  value. A GUI window's frame ticks are sent this way, so what their loops change draws in the
+  same frame.
 - **`OneShotChannel`** is a gate. `(<- gate)` waits until some task calls `(call (. gate done))`,
   which lets every waiting task go on. A task that reads the gate after that waits for the next
   `done`.

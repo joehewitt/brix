@@ -98,7 +98,7 @@ time the frame spent in each phase:
 | Part | Covers |
 | --- | --- |
 | `input` | event handling since the previous frame, plus resampled scroll dispatch |
-| `tick` | the window clock and the animations it steps |
+| `tick` | the window clock, the animations it steps, and the `(on tick frames)` loops they run |
 | `update` | the markup checkpoint, focus, and settling for paint |
 | `layout` | `layout`, or popup placement alone |
 | `record` | `maintain` |
@@ -109,8 +109,9 @@ time the frame spent in each phase:
 at least the sum of the parts; popups, geometry sync, and the opening frame's layout show only in
 it. `frame` is the Metal frame id, or -1 when the frame did not go through Metal.
 
-Handlers of `(on tick frames)` run in a task of their own after the frame that sent the tick, so
-their work shows in no part, and what they change draws in the next frame.
+`FrameTicks` sends each tick with `AsyncOnDemandChannel.deliver`, so a loop on `frames` runs
+inside the tick part, before update, and what it changes draws in the same frame. A loop that
+waits stalls the frame.
 
 `metal-frame-input-latency-nanos` gives the time from the first pointer or touch event that left
 work for a frame to that frame's presentation; key and text events carry no timestamp, so they do
