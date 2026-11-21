@@ -5598,6 +5598,7 @@ static GlyphPaint glyphRunPaint(ExpandState& state, const GlyphRunOp& op) {
 
 static const double kGreekEmPixels = 4.0;
 static const float kGreekCoverage = 0.37f;
+static const double kQuadCornerInk = (M_PI + 4) / 24;
 
 static void emitGreekedRun(ExpandState& state, const GlyphRunOp& op, const RunRecord& run, double zoom) {
     MetalRenderer* renderer = state.renderer;
@@ -5633,7 +5634,7 @@ static void emitGreekedRun(ExpandState& state, const GlyphRunOp& op, const RunRe
         instance.rect[3] = static_cast<float>(barHeight);
         instance.color = op.color;
         instance.kind = 0;
-        instance.opacity = static_cast<float>(kGreekCoverage * width * height / (barWidth * barHeight));
+        instance.opacity = static_cast<float>(kGreekCoverage * width * height / (barWidth * barHeight + kQuadCornerInk));
         emitInstance(state, PipelineTier1, nil, instance);
     }
 }
@@ -6929,7 +6930,7 @@ static bool emitTinyFill(ExpandState& state, const FrameFillDraw& draw, const Fi
     }
     double quadWidth = std::max(width, 1.0);
     double quadHeight = std::max(height, 1.0);
-    double coverage = path.area * std::fabs(device[0] * device[3]) / (quadWidth * quadHeight);
+    double coverage = path.area * std::fabs(device[0] * device[3]) / (quadWidth * quadHeight + kQuadCornerInk);
     Instance instance = {};
     memcpy(instance.contentMask, draw.mask, sizeof(instance.contentMask));
     instance.rect[0] = static_cast<float>((bounds[0] + bounds[2] - quadWidth) * 0.5);
