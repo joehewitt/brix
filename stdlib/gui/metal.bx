@@ -731,6 +731,7 @@
     (param slot-y I32)
     (param pool MetalTilePool (= (. MetalTilePool general)))
     (param settle Bool (= false))
+    (param keep-since I64 (= (. I64 max)))
     (return
       (call C:brixGuiMetalTileReserve
         (block
@@ -745,12 +746,16 @@
           (arg slot-y)
           (arg (as pool I32))
           (arg settle)
+          (arg keep-since)
         )
       )
     )
   )
   (fn-expr + is-pyramid-full Bool :get
     (call C:brixGuiMetalRendererPyramidFull renderer)
+  )
+  (fn-expr + frame-count I64 :get
+    (call C:brixGuiMetalRendererFrameCount renderer)
   )
   (fn-do + take-tile-rejection (? MetalTileRejection)
     (return-if null (if (not (call C:brixGuiMetalRendererTakeTileRejection renderer))))
@@ -1077,8 +1082,7 @@
 (blank)
 (type + MetalTilePool (is I32)
   (variant general (= 0))
-  (variant visible (= 1))
-  (variant ahead (= 2))
+  (variant pyramid (= 1))
 )
 
 (type _ MetalPathCapture (is Canvas)

@@ -134,8 +134,7 @@ enum BxGuiMetalStatField {
 
 enum BxGuiMetalTilePool {
     BxGuiMetalTilePoolGeneral = 0,
-    BxGuiMetalTilePoolVisible = 1,
-    BxGuiMetalTilePoolAhead = 2,
+    BxGuiMetalTilePoolPyramid = 1,
 };
 
 extern "C" bool brixGuiMetalRendererIsAvailable(void);
@@ -358,9 +357,11 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     int32_t slotX,
     int32_t slotY,
     int32_t pool,
-    bool settle
+    bool settle,
+    int64_t keepSince
 );
 extern "C" bool brixGuiMetalRendererPyramidFull(void* renderer);
+extern "C" int64_t brixGuiMetalRendererFrameCount(void* renderer);
 extern "C" bool brixGuiMetalRendererTakeTileRejection(void* renderer);
 extern "C" uint64_t brixGuiMetalRendererTileRejectionKey(void* renderer);
 extern "C" uint32_t brixGuiMetalRendererTileRejectionGeneration(void* renderer);

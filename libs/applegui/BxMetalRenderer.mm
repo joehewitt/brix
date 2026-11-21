@@ -497,7 +497,6 @@ static void watchMemoryPressure() {
 
 static const size_t kRetiredTileLimit = 4;
 static const size_t kTileRejectionLimit = 256;
-static const int64_t kAheadTileKeepFrames = 120;
 
 static const int kAtlasSize = 1024;
 static const double kGlyphPenSteps = 1024;
@@ -13913,9 +13912,13 @@ static void evictTiles(MetalRenderer* renderer, uint64_t budget, int64_t before,
     }
 }
 
-static bool evictPyramidTiles(MetalRenderer* renderer, uint64_t budget, uint32_t protectedHandle, bool ahead) {
+static bool evictPyramidTiles(
+    MetalRenderer* renderer,
+    uint64_t budget,
+    uint32_t protectedHandle,
+    int64_t reservedBefore
+) {
     int64_t before = pyramidKeepFrame(renderer, renderer->frameCount);
-    int64_t reservedBefore = ahead ? renderer->frameCount - kAheadTileKeepFrames : INT64_MAX;
     while (renderer->pyramidBytes > budget) {
         uint32_t victim = oldestPyramidTile(renderer, before, protectedHandle, reservedBefore);
         if (victim == UINT32_MAX) {
@@ -14110,6 +14113,11 @@ extern "C" uint32_t brixGuiMetalRendererTileRejectionTiles(void* pointer) {
     return renderer ? renderer->takenRejection.tiles : 0;
 }
 
+extern "C" int64_t brixGuiMetalRendererFrameCount(void* pointer) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    return renderer ? renderer->frameCount : 0;
+}
+
 extern "C" int64_t brixGuiMetalRendererPyramidTileLimit(void* pointer, int32_t pixels) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
     if (!renderer || pixels <= 0) {
@@ -14130,7 +14138,8 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     int32_t slotX,
     int32_t slotY,
     int32_t pool,
-    bool settle
+    bool settle,
+    int64_t keepSince
 ) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
     if (!renderer || !renderer->currentPacket || pixelWidth <= 0 || pixelHeight <= 0 ||
@@ -14151,7 +14160,7 @@ extern "C" uint64_t brixGuiMetalTileReserve(
         uint64_t budget = pyramidBudgetBytes();
         uint64_t room = budget + holding > needed ? budget + holding - needed : 0;
         bool fits = renderer->pyramidBytes <= room ||
-            evictPyramidTiles(renderer, room, held, pool == BxGuiMetalTilePoolAhead);
+            evictPyramidTiles(renderer, room, held, keepSince);
         if (!fits) {
             renderer->pyramidFull = true;
             return 0;

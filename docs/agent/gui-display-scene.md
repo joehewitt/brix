@@ -165,10 +165,13 @@ texture's slots. Each tile draws only the items its cull selection touches.
 
 **Memory.** Pyramid tiles have a cap of three quarters of the tile budget.
 - **Level choice:** a chunk whose visible tiles at its level would exceed the cap renders one
-  level coarser. This is re-checked when the level or the surface changes.
+  level coarser. It checks every frame and keeps the coarser level until the level or the
+  surface changes.
 - **Eviction:** first settle tiles, then other pyramid tiles, then sprites and CPU tiles. The
-  tiles the last window frame drew are never taken. Wants ahead of the view evict only tiles not
-  reserved in the last 120 frames.
+  tiles the last window frame drew are never taken. Each reservation also passes `tile-reserve`
+  a frame and keeps the tiles reserved since then: goal wants keep what was reserved since the
+  goal began, and wants ahead of the view keep the last 120 frames' tiles. Without that, two
+  wanted tiles that do not fit together evict each other every frame.
 - **Stats:** `Window.tile-bytes`, `pyramid-tile-bytes` and `pyramid-cap-bytes`.
 
 `stdlib/gui/parity/raster-tile-parity.bx` checks tiles against direct drawing offscreen: 1:1 at
