@@ -1,0 +1,285 @@
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(blank)
+(prop + cell-width _ (= 168.0))
+(prop + cell-height _ (= 168.0))
+(prop + field-margin _ (= 100.0))
+(prop _ garden-aspect _ (= 1.6))
+(prop _ gust-lifetime _ (= 4.5))
+(prop _ gust-speed _ (= 420.0))
+(prop _ gust-band _ (= 240.0))
+(prop _ max-gusts _ (= 6))
+
+(type + MotionMode (is Union)
+  (variant transforms)
+  (variant deform)
+  (fn-expr + title String :get
+    (match this
+      (case .transforms
+        "Transforms"
+      )
+      (default
+        "Deform"
+      )
+    )
+  )
+)
+
+(type + PaintTier (is Union)
+  (variant fills)
+  (variant strokes)
+  (variant gradients)
+  (variant effects)
+  (fn-expr + title String :get
+    (match this
+      (case .fills
+        "Fills"
+      )
+      (case .strokes
+        "+ Strokes"
+      )
+      (case .gradients
+        "+ Gradients"
+      )
+      (default
+        "+ Clips & FX"
+      )
+    )
+  )
+  (fn-expr + has-strokes Bool :get
+    (!= this (. PaintTier fills))
+  )
+  (fn-expr + has-gradients Bool :get
+    (or (== this (. PaintTier gradients)) (== this (. PaintTier effects)))
+  )
+  (fn-expr + has-effects Bool :get
+    (== this (. PaintTier effects))
+  )
+)
+
+(type + SpecimenKind (is Union)
+  (variant fern)
+  (variant blossom)
+  (variant vine)
+  (variant pod)
+)
+
+(type + Specimen (is Tuple)
+  (prop + index Int)
+  (prop + kind SpecimenKind)
+  (prop + x F64)
+  (prop + y F64)
+  (prop + scale F64)
+  (prop + angle F64)
+  (prop + palette Int)
+  (prop + phase F64)
+  (prop + leaflets Int)
+  (prop + is-animated Bool)
+)
+
+(type + Pollinator (is Tuple)
+  (prop + index Int)
+  (prop + home-x F64)
+  (prop + home-y F64)
+  (prop + radius-x F64)
+  (prop + radius-y F64)
+  (prop + speed F64)
+  (prop + phase F64)
+  (prop + scale F64)
+  (prop + palette Int)
+)
+
+(type + WindGust (is Tuple)
+  (prop + origin Point)
+  (prop + born F64)
+  (prop + strength F64)
+)
+
+(type + WindOffset (is Tuple)
+  (prop + x F64)
+  (prop + y F64)
+)
+
+(type + SceneCounts (is Tuple)
+  (prop + paths Int)
+  (prop + segments Int)
+  (prop + strokes Int)
+)
+
+(type + HerbariumField
+  (prop + specimen-count Int)
+  (prop + animated-share Int)
+  (prop + columns Int)
+  (prop + rows Int)
+  (prop + extent Dimensions)
+  (prop + specimens (list Specimen))
+  (prop + pollinators (list Pollinator))
+  (prop + animated-count Int)
+  (fn-do + This _
+    (param count Int)
+    (param share Int)
+    (= specimen-count count)
+    (= animated-share share)
+    (= columns (call garden-columns count))
+    (= rows (/ (+ count (- columns 1)) columns))
+    (= extent (call garden-size count))
+    (let inner-w (- (. extent width) (* field-margin 2)))
+    (let inner-h (- (. extent height) (* field-margin 2)))
+    (let total-animated 0)
+    (for (in index (..< 0 count))
+      (let col (% index columns))
+      (let row (/ index columns))
+      (let base-x (+ field-margin (* (+ (as col F64) 0.5) cell-width)))
+      (let base-y (+ field-margin (* (+ (as row F64) 0.5) cell-height)))
+      (let jx (* (- (call hash-unit (+ (* index 17) 3)) 0.5) cell-width 0.92))
+      (let jy (* (- (call hash-unit (+ (* index 31) 11)) 0.5) cell-height 0.92))
+      (let drift-x (* (call sin (+ (* (as row F64) 0.72) (* (as col F64) 0.31))) cell-width 0.36))
+      (let drift-y (* (call cos (+ (* (as col F64) 0.67) (* (as row F64) 0.29))) cell-height 0.36))
+      (let px (call clamp (+ base-x jx drift-x) (+ field-margin 24.0) (+ field-margin inner-w -24.0)))
+      (let py (call clamp (+ base-y jy drift-y) (+ field-margin 24.0) (+ field-margin inner-h -24.0)))
+      (let kind (call specimen-kind index))
+      (let scale (+ 0.78 (* 0.54 (call hash-unit (+ (* index 43) 7)))))
+      (let angle (* (- (call hash-unit (+ (* index 59) 19)) 0.5) 0.9))
+      (let palette (% (+ (* index 5) (/ index 3)) 12))
+      (let phase (* (call hash-unit (+ (* index 73) 29)) 2 π))
+      (let leaflets (+ 5 (% (+ index (/ index 5)) 4)))
+      (let moving (call specimen-is-animated index share))
+      (if moving
+        (+= total-animated 1)
+      )
+      (+= specimens (call Specimen index kind px py scale angle palette phase leaflets moving))
+    )
+    (= animated-count total-animated)
+    (let moth-count (if-expr (== share 0) 0 (call clamp (/ count 16) 14 180)))
+    (for (in idx (..< 0 moth-count))
+      (let home-x (+ field-margin (* (call hash-unit (+ (* idx 89) 101)) (- (. extent width) (* field-margin 2)))))
+      (let home-y (+ field-margin (* (call hash-unit (+ (* idx 113) 211)) (- (. extent height) (* field-margin 2)))))
+      (let rx (+ 180.0 (* 420.0 (call hash-unit (+ (* idx 131) 17)))))
+      (let ry (+ 160.0 (* 340.0 (call hash-unit (+ (* idx 149) 23)))))
+      (let speed (+ 0.16 (* 0.22 (call hash-unit (+ (* idx 167) 41)))))
+      (let phase (* (call hash-unit (+ (* idx 191) 53)) 2 π))
+      (let scale (+ 0.72 (* 0.56 (call hash-unit (+ (* idx 223) 71)))))
+      (let palette (% (+ (* idx 3) 4) 12))
+      (+= pollinators (call Pollinator idx home-x home-y rx ry speed phase scale palette))
+    )
+  )
+  (fn-do + visible-specimens Int
+    (param world Rect)
+    (let pad 160.0)
+    (let min-x (- (. world x) pad))
+    (let max-x (+ (. world x) (. world width) pad))
+    (let min-y (- (. world y) pad))
+    (let max-y (+ (. world y) (. world height) pad))
+    (let shown 0)
+    (for (in item specimens)
+      (if (and (>= (. item x) min-x) (<= (. item x) max-x) (>= (. item y) min-y) (<= (. item y) max-y))
+        (+= shown 1)
+      )
+    )
+    (return shown)
+  )
+)
+
+(type + GustField
+  (prop + gusts (list WindGust))
+  (fn-do + spawn _
+    (param origin Point)
+    (param clock F64)
+    (+= gusts (call WindGust origin clock 1.0))
+    (while (> (. gusts length) max-gusts)
+      (call (. gusts remove) 0)
+    )
+  )
+  (fn-do + prune _
+    (param clock F64)
+    (let index 0)
+    (while (< index (. gusts length))
+      (if (> (- clock (. ([] gusts index) born)) gust-lifetime)
+        (call (. gusts remove) index)
+        (else
+          (+= index 1)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + hash-unit F64
+  (param seed Int)
+  (- value (call floor value))
+  (where
+    (lazy value (* (call sin (* (as seed F64) 12.9898)) 43758.5453))
+  )
+)
+
+(fn-expr + garden-columns Int
+  (param count Int)
+  (call max 1 (as (call ceil (call sqrt (* (as count F64) garden-aspect))) Int))
+)
+
+(fn-expr + garden-size Dimensions
+  (param count Int)
+  (call Dimensions (+ (* (as columns F64) cell-width) (* field-margin 2)) (+ (* (as rows F64) cell-height) (* field-margin 2)))
+  (where
+    (lazy columns (call garden-columns count))
+    (lazy rows (/ (+ count (- columns 1)) columns))
+  )
+)
+
+(fn-expr _ specimen-kind SpecimenKind
+  (param index Int)
+  (match (% (as (call floor (* (call hash-unit (+ (* index 97) 13)) 4.0)) Int) 4)
+    (case= 0
+      (. SpecimenKind fern)
+    )
+    (case= 1
+      (. SpecimenKind blossom)
+    )
+    (case= 2
+      (. SpecimenKind vine)
+    )
+    (default
+      (. SpecimenKind pod)
+    )
+  )
+)
+
+(fn-expr _ specimen-is-animated Bool
+  (param index Int)
+  (param share Int)
+  (if-expr (<= share 0)
+    false
+    (if-expr (>= share 100)
+      true
+      (< (% (* index 37) 100) share)
+    )
+  )
+)
+
+(fn-do + wind-at WindOffset
+  (param x F64)
+  (param y F64)
+  (param phase F64)
+  (param clock F64)
+  (param gusts (list WindGust))
+  (let wave (+ (* clock 1.65) (* x 0.0024) (* y 0.0017) phase))
+  (let secondary (+ (* clock 2.8) (* x 0.0041) (- (* y 0.0033)) (* phase 0.5)))
+  (let wx (+ (* (call sin wave) 18.0) (* (call cos secondary) 6.5)))
+  (let wy (+ (* (call cos (* wave 0.82)) 7.5) (* (call sin secondary) 3.5)))
+  (for (in gust gusts)
+    (let age (- clock (. gust born)))
+    (if (and (>= age 0) (< age gust-lifetime))
+      (let dx (- x (as (. gust origin x) F64)))
+      (let dy (- y (as (. gust origin y) F64)))
+      (let dist (call sqrt (+ (* dx dx) (* dy dy) 1.0)))
+      (let front (* age gust-speed))
+      (let delta (/ (- dist front) gust-band))
+      (let envelope (* (call exp (* (- delta) delta)) (- 1.0 (/ age gust-lifetime))))
+      (let push (* envelope (. gust strength) 54.0))
+      (+= wx (* (/ dx dist) push))
+      (+= wy (* (/ dy dist) push))
+    )
+  )
+  (return (call WindOffset wx wy))
+)

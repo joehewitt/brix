@@ -66,7 +66,10 @@ ships. Unlike the core tests, they show how complete programs are written.
   `control-field` zooms from one animated control card out to half a million on an endless canvas,
   simulating every card on worker threads and drawing them as quad batches. `page-board` pans and
   zooms a board of up to 4,000 mock pages of text, icons and charts drawn as vector paths and
-  glyphs, with a panel showing what each frame costs.
+  glyphs, with a panel showing what each frame costs. `herbarium` animates up to 4,000 illustrated
+  botanical specimens—ferns, blossoms, vines, seed pods and drifting pollinators—built from cubic
+  Bézier fills and strokes, with toggles for animated share, instanced transforms vs. live path
+  deformation, paint tiers and split static/dynamic layers.
 - [`examples/games`](../examples/games): three macOS games, `resonance`, `prism-break` and
   `clatter-hill`, a marble run with sound.
 - [`examples/graphics`](../examples/graphics): macOS windows that draw with the graphics library.
