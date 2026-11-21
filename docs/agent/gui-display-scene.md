@@ -90,6 +90,87 @@ which items are visible.
 
 Code that edits a recorded chunk's items in place must set its `cull-index` to null.
 
+## Raster tiles
+
+A chunk whose owner sets `caches-raster` can draw its content subtree from raster tiles instead of
+encoding its items each frame.
+
+**Eligibility.** `raster-view` accepts a chunk when:
+- its content state's matrix is a uniform positive scale plus a translation;
+- the states above the content state are plain clips or translations, and the groups above the
+  chunk only translate;
+- the items under the content state are contiguous in paint order;
+- nothing under the content state reads beneath the chunk: no backdrop, no blend mode other than
+  normal, and no blur.
+
+Items before and after the content range draw directly around the tiles. Anything else draws
+directly.
+
+**Tiled or direct.** An eligible chunk draws tiled while either holds:
+- its level lands exactly, meaning the scale is a power of two;
+- its cull index estimates at least `raster-tiled-items` visible items. Once tiled, it stays tiled
+  until the estimate falls below `raster-direct-items`.
+
+Both thresholds are `DisplayScene` properties.
+
+**Grids and keys.**
+- **Octave level:** level ℓ = round(log2 scale) rasterizes 2^ℓ points per content unit. A cell
+  is 508 device pixels of content, and its texture is 512 × 512 with a 2 px gutter of real
+  content.
+- **Settle level:** after `raster-settle-delay` without a scale change, and with no goal, the
+  drawing grid becomes a grid at exactly the display scale. A settle grid whose visible tiles are
+  already present starts at once.
+- **Keys:** octave keys are (chunk, level, column, row), and settle keys carry the scale and a flag
+  bit. Tiles are valid for the chunk's `path-generation`.
+
+The scene has no clock. The host sets `frame-time` each frame. When `raster-settle-wait` is not
+null, the host requests a frame that far ahead, and calls `take-raster-settle` when it arrives.
+`Window` does all three.
+
+**Drawing.** Each visible cell draws from one source: its own tile, or else a cover displayed
+within 2.83×.
+- **Covers:** the parent's quarter, the four children, the octave tiles under a settle cell, or
+  the previous settle level's tiles.
+- **No cover:** if any visible cell lacks one, the chunk draws directly that frame.
+
+`PacketOpRasterTile` draws a tile as an axis-aligned quad. It samples nearest, with placement
+rounded to device pixels, when the tile displays at 1:1, and through the area sampler otherwise.
+
+**Wants and rendering.** Encoding lists the tiles it wants, in order:
+1. the visible tiles, nearest the viewport center first;
+2. the goal level's tiles over the viewport, when `Box.content-transform-goal` reports where an
+   eased transform is heading and the goal would tile;
+3. the strip a pan will sweep in the next 0.2 s;
+4. while zooming with no goal, the next level.
+
+`render-raster-tiles`, at the start of the next `frame-metal`, renders them into the staging
+texture's slots. Each tile draws only the items its cull selection touches.
+- **Item budget:** visible tiles stop at 40,000 items a frame, and the others at 16,000. The
+  first tile always renders.
+- **Text:** tile frames rasterize glyphs at the exact scale, leave glyph run motion state alone,
+  and draw no stand-ins. A missing glyph rejects the packet.
+
+**Damage and termination.** Frames keep coming while visible tiles fill:
+- A cell drawn by a cover, or a chunk drawn directly while its visible tiles fill, adds tile
+  damage, which keeps `has-pending-textures` true.
+- A want that cannot progress adds none: a key marked failed, a want over the memory cap, or a
+  chunk whose resources, index or tile commit failed that frame.
+- A tile rejected while alone in its packet, for a missing glyph or a fill overflow, takes a
+  strike. Three at one generation mark the key failed.
+- A rejected packet of several tiles makes the next packet render one tile.
+
+**Memory.** Pyramid tiles have a cap of three quarters of the tile budget.
+- **Level choice:** a chunk whose visible tiles at its level would exceed the cap renders one
+  level coarser. This is re-checked when the level or the surface changes.
+- **Eviction:** first settle tiles, then other pyramid tiles, then sprites and CPU tiles. The
+  tiles the last window frame drew are never taken. Wants ahead of the view evict only tiles not
+  reserved in the last 120 frames.
+- **Stats:** `Window.tile-bytes`, `pyramid-tile-bytes` and `pyramid-cap-bytes`.
+
+`stdlib/gui/parity/raster-tile-parity.bx` checks tiles against direct drawing offscreen: 1:1 at
+whole-pixel and fractional offsets, exact landing, between levels, settled, and text in tile
+frames.
+
 ## Frame times
 
 After each committed frame, `Window.last-frame-times` holds a `FrameTimes` with the main-thread
