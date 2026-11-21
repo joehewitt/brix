@@ -811,6 +811,7 @@ struct FillPathRecord {
     double height = 0;
     double miterScale = 1;
     double length = 0;
+    double area = 0;
 };
 
 struct DabCacheEntry {
@@ -5650,7 +5651,8 @@ static void expandGlyphRun(
     GlyphPaint paint = glyphRunPaint(state, op);
     double zoom = state.matrix[0];
     double glyphScale = renderer->scale * zoom;
-    if (run.emSize * glyphScale < kGreekEmPixels && !paint.shader && !run.tinted) {
+    if (zoom > 0 && state.matrix[1] == 0 && state.matrix[2] == 0 &&
+            run.emSize * glyphScale < kGreekEmPixels && !paint.shader && !run.tinted) {
         emitGreekedRun(state, op, run, zoom);
         return;
     }
@@ -6898,6 +6900,44 @@ static uint32_t appendGradientPaint(
     return translucent ? record | FillPaintTranslucent : record;
 }
 
+static const double kTinyPathPixels = 3.0;
+
+static bool emitTinyFill(ExpandState& state, const FrameFillDraw& draw, const FillPathRecord& path) {
+    const double* device = draw.device;
+    if (!(path.area > 0) || draw.paint || draw.shader || draw.fillRule || device[1] != 0 || device[2] != 0) {
+        return false;
+    }
+    double origin[6] = {
+        device[0],
+        0,
+        0,
+        device[3],
+        device[0] * draw.originX + device[4],
+        device[3] * draw.originY + device[5],
+    };
+    double bounds[4];
+    transformBounds(origin, draw.bounds, bounds);
+    double width = bounds[2] - bounds[0];
+    double height = bounds[3] - bounds[1];
+    if (!(width <= kTinyPathPixels && height <= kTinyPathPixels)) {
+        return false;
+    }
+    double quadWidth = std::max(width, 1.0);
+    double quadHeight = std::max(height, 1.0);
+    double coverage = path.area * std::fabs(device[0] * device[3]) / (quadWidth * quadHeight);
+    Instance instance = {};
+    memcpy(instance.contentMask, draw.mask, sizeof(instance.contentMask));
+    instance.rect[0] = static_cast<float>((bounds[0] + bounds[2] - quadWidth) * 0.5);
+    instance.rect[1] = static_cast<float>((bounds[1] + bounds[3] - quadHeight) * 0.5);
+    instance.rect[2] = static_cast<float>(quadWidth);
+    instance.rect[3] = static_cast<float>(quadHeight);
+    instance.color = packColor(draw.color[0], draw.color[1], draw.color[2], draw.color[3]);
+    instance.kind = 0;
+    instance.opacity = static_cast<float>(std::min(1.0, coverage));
+    emitInstance(state, PipelineTier1, nil, instance);
+    return true;
+}
+
 static void emitSpanDraws(
     ExpandState& state,
     FrameFillDraw& draw,
@@ -6955,7 +6995,9 @@ static void emitSpanDraws(
             draw.fillRule = span.fillRule;
             draw.halfWidth = 0;
             draw.strokeStyle = 0;
-            emitFillDraw(state, draw, scissor);
+            if (span.brush || !emitTinyFill(state, draw, path)) {
+                emitFillDraw(state, draw, scissor);
+            }
         }
     }
     int64_t strokeColor = -1;
@@ -14876,7 +14918,25 @@ static uint32_t fillEndPath(MetalRenderer* renderer) {
     path.segmentCount = static_cast<uint32_t>(renderer->fillPending.size());
     path.miterScale = fillMiterScale(renderer->fillPending);
     double minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
+    double area = 0;
+    double subpathArea = 0;
+    bool mixed = false;
     for (const FillPendingSegment& segment : renderer->fillPending) {
+        if (segment.kind & FillSegmentStart) {
+            mixed = mixed || subpathArea * area < 0;
+            area += subpathArea;
+            subpathArea = 0;
+        }
+        const double* p = segment.p;
+        auto cross = [p](int first, int second) {
+            return p[first * 2] * p[second * 2 + 1] - p[second * 2] * p[first * 2 + 1];
+        };
+        if ((segment.kind & FillSegmentKindMask) == 0) {
+            subpathArea += cross(0, 3) * 0.5;
+        } else {
+            subpathArea += (12 * cross(0, 1) + 6 * cross(0, 2) + 2 * cross(0, 3) +
+                6 * cross(1, 2) + 6 * cross(1, 3) + 12 * cross(2, 3)) / 40;
+        }
         for (int point = 0; point < 4; ++point) {
             if ((segment.kind & FillSegmentKindMask) == 0 && (point == 1 || point == 2)) {
                 continue;
@@ -14890,10 +14950,13 @@ static uint32_t fillEndPath(MetalRenderer* renderer) {
     if (renderer->fillPending.empty()) {
         minX = minY = maxX = maxY = 0;
     }
+    mixed = mixed || subpathArea * area < 0;
+    area += subpathArea;
     path.originX = minX;
     path.originY = minY;
     path.width = maxX - minX;
     path.height = maxY - minY;
+    path.area = mixed ? 0 : std::fabs(area);
     ensureVectorCapacity(
         renderer,
         renderer->fillSegments,
