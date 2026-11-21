@@ -7,6 +7,7 @@
 (import /graphics/path)
 (import /graphics/point)
 (import /graphics/primitives)
+(import /graphics/shader)
 (import /graphics/text)
 (import /graphics/vectorgeometry)
 (import /gui/box)
@@ -23,6 +24,7 @@
 (prop _ raster-parity-scale F64 (= 2))
 (prop _ raster-parity-frames Size (= 8))
 (prop _ raster-parity-second U64 (= 1000000000))
+(prop _ raster-parity-grain _ (:= (call Paint (call Shader (call raster-parity-grain-source)))))
 (prop _ raster-parity-words _ (= (list "Lorem" "ipsum" "dolor" "sit" "amet," "consectetur" "adipiscing" "elit," "sed" "do" "eiusmod" "tempor")))
 
 (main
@@ -37,6 +39,7 @@
   (call (. cases run) between-levels-tests)
   (call (. cases run) settled-tests)
   (call (. cases run) tile-text-tests)
+  (call (. cases run) paper-tests)
   (return cases)
 )
 
@@ -81,6 +84,16 @@
   (call (. t check) "settled tiles match direct drawing within one 8-bit step" (<= (. found diff maximum-channel-delta) 1))
 )
 
+(fn-do + paper-tests _
+  (param t TestCase)
+  (let offset (call Point -37.3 -23.7))
+  (let rounded (call Point (/ (call round (* (. offset x) raster-parity-scale)) raster-parity-scale) (/ (call round (* (. offset y) raster-parity-scale)) raster-parity-scale)))
+  (let panned (call compare-raster-field offset rounded 1 false raster-parity-grain))
+  (call (. t check) "paper grain in tiles at a fractional offset matches direct drawing at the rounded offset" (and (. panned is-tiled) (<= (. panned diff maximum-channel-delta) 1)))
+  (let settled (call compare-raster-field (call Point -11.5 -7) (call Point -11.5 -7) 0.6 true raster-parity-grain))
+  (call (. t check) "paper grain in settled tiles matches direct drawing" (and (. settled is-tiled) (<= (. settled diff maximum-channel-delta) 1)))
+)
+
 (fn-do + tile-text-tests _
   (param t TestCase)
   (let bounds raster-parity-bounds)
@@ -123,17 +136,20 @@
   (param direct-offset Point)
   (param zoom F64 (= 1))
   (param settles Bool (= false))
+  (param paper (? Paint) (= null))
   (let bounds raster-parity-bounds)
   (let tiled-root (call SceneParityRoot))
   (let tiled-field (call RasterParityField))
   (= (. tiled-field offset) tiled-offset)
   (= (. tiled-field zoom) zoom)
+  (= (. tiled-field paper) paper)
   (call markup-append tiled-root tiled-field)
   (call mount-scene-root tiled-root bounds)
   (let direct-root (call SceneParityRoot))
   (let direct-field (call RasterParityField))
   (= (. direct-field offset) direct-offset)
   (= (. direct-field zoom) zoom)
+  (= (. direct-field paper) paper)
   (= (. direct-field caches) false)
   (call markup-append direct-root direct-field)
   (call mount-scene-root direct-root bounds)
@@ -184,6 +200,7 @@
   (prop + offset _ (= (call Point 0 0)))
   (prop + zoom F64 (= 1))
   (prop + caches _ (= true))
+  (prop + paper (? Paint))
   (prop _ layouts (list TextLayout))
   (prop _ handles (list VectorGeometryHandle))
   (prop _ palettes (list (list RGBA)))
@@ -202,6 +219,15 @@
   )
   (fn-do + paint-self _
     (param canvas Canvas)
+    (let grain paper)
+    (if grain
+      (= (. canvas stroke-color) null)
+      (= (. canvas fill-color) (call RGBA 0.8 0.7 0.5 1))
+      (= (. canvas fill-paint) grain)
+      (call (. canvas rect) (call Rect 0 0 1120 780))
+      (= (. canvas fill-paint) null)
+      (return)
+    )
     (let table (call vector-geometry-table-for markup-batch-root))
     (if (not layouts)
       (for (in line (..< 0 8))
@@ -263,4 +289,18 @@
   (let none (call VectorGeometryPaint (. VectorGeometryPaintRole none) 0))
   (let color (call VectorGeometryPaint (. VectorGeometryPaintRole color) 0))
   (return (call VectorGeometry (call Rect 0 0 100 100) (call Rect -10 -10 120 120) (list (call VectorGeometrySpan outline color none null null null (. FillRule nonzero))) false false))
+)
+
+(fn-expr _ raster-parity-grain-source _
+  (paragraph
+    "float grainHash(float2 cell) {"
+    "    float3 p = fract(float3(cell.x, cell.y, cell.x) * 0.1031);"
+    "    p += dot(p, p.yzx + 33.33);"
+    "    return fract((p.x + p.y) * p.z);"
+    "}"
+    "float4 paint(PaintInput input, ShaderArgs args) {"
+    "    float grain = grainHash(floor(input.paper * 2.0 + 0.25));"
+    "    return float4(input.color.rgb * (0.7 + 0.6 * grain), input.color.a);"
+    "}"
+  )
 )

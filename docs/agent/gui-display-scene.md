@@ -136,8 +136,12 @@ within 2.83×.
 `PacketOpRasterTile` draws a tile as an axis-aligned quad. It samples nearest, with placement
 rounded to device pixels, when the tile displays at 1:1, and through the area sampler otherwise.
 
-A paint's `paper` coordinate is the device point over the scale. In a tile frame that point is in
-the tile's staging slot, so grain that reads `paper` differs from direct drawing.
+A paint's `paper` coordinate is in points, measured from the content origin: the device position
+of the nearest `Box.content-transform`'s origin, rounded to a whole device pixel, or the surface
+origin outside one. Grain that reads it moves with the content. A tile frame measures from the
+tile's own content origin, so tiles match direct drawing at the settle level; between octave
+levels, grain is drawn at the level's scale and resampled. The CoreGraphics fallback still
+measures from its canvas.
 
 **Wants and rendering.** Encoding lists the tiles it wants, in order:
 1. the visible tiles, nearest the viewport center first;
@@ -175,8 +179,8 @@ texture's slots. Each tile draws only the items its cull selection touches.
 - **Stats:** `Window.tile-bytes`, `pyramid-tile-bytes` and `pyramid-cap-bytes`.
 
 `stdlib/gui/parity/raster-tile-parity.bx` checks tiles against direct drawing offscreen: 1:1 at
-whole-pixel and fractional offsets, exact landing, between levels, settled, and text in tile
-frames.
+whole-pixel and fractional offsets, exact landing, between levels, settled, text in tile frames,
+and paper grain.
 
 ## Frame times
 

@@ -71,6 +71,7 @@ enum PacketOpKind : uint8_t {
     PacketOpBackdropShader,
     PacketOpQuads,
     PacketOpRasterTile,
+    PacketOpPushContentTransform,
 };
 
 struct QuadOp {
@@ -795,8 +796,9 @@ struct FillPaintGPU {
     uint32_t stopStart;
     uint32_t stopCount;
     uint32_t padding;
+    float paperX, paperY;
 };
-static_assert(sizeof(FillPaintGPU) == 56, "FillPaint layout");
+static_assert(sizeof(FillPaintGPU) == 64, "FillPaint layout");
 
 struct FillStopGPU {
     float color[4];
@@ -960,8 +962,9 @@ struct DabDrawGPU {
     uint32_t roundedClip;
     uint32_t coverage;
     uint32_t blend;
+    float paperX, paperY;
 };
-static_assert(sizeof(DabDrawGPU) == 128, "DabDraw layout");
+static_assert(sizeof(DabDrawGPU) == 136, "DabDraw layout");
 
 struct FillBatchInfo {
     MTLScissorRect scissor;
@@ -2170,6 +2173,8 @@ struct FillPaint {
     uint stopStart;
     uint stopCount;
     uint padding;
+    float paperX;
+    float paperY;
 };
 
 struct FillStop {
@@ -3588,7 +3593,7 @@ static float4 paintColor(
 #if defined(BRIX_USER_PAINT)
         PaintInput input;
         input.position = q;
-        input.paper = point * as_type<float>(record.padding);
+        input.paper = (point - float2(record.paperX, record.paperY)) * as_type<float>(record.padding);
         input.color = float4(brixLinearColor(float3(record.p0, record.p1, record.p2), 0u, kBrixOutputSpace), record.p3);
         input.pixel = sqrt(abs(record.a * record.d - record.b * record.c));
         float4 color = ::paint(input, args);
@@ -4349,6 +4354,8 @@ struct DabDraw {
     uint roundedClip;
     uint coverage;
     uint blend;
+    float paperX;
+    float paperY;
 };
 
 struct DabVertexOut {
@@ -4443,7 +4450,7 @@ fragment float4 brixGuiMetalDabFragment(
     DabInput input;
     input.offset = in.offset;
     input.position = in.local;
-    input.paper = point * draw.paper;
+    input.paper = (point - float2(draw.paperX, draw.paperY)) * draw.paper;
     input.color = float4(
         brixLinearColor(float3(draw.color[0], draw.color[1], draw.color[2]), 0u, kBrixOutputSpace),
         draw.color[3]
@@ -4880,6 +4887,8 @@ struct ExpandState {
     uint32_t roundedClip = 0;
     uint32_t coverageClip = 0;
     double matrixStack[kExpandDepth][6];
+    double paper[2] = {0, 0};
+    double paperStack[kExpandDepth][2];
     uint32_t matrixDepth = 0;
     uint32_t matrixOverflow = 0;
     uint32_t layerStack[kExpandDepth];
@@ -5679,6 +5688,7 @@ static uint32_t appendGradientPaint(
     const ChunkPathSet& set,
     uint32_t index,
     const double* device,
+    const double* paper,
     float alpha,
     uint32_t& shader,
     bool text = false
@@ -5697,7 +5707,7 @@ static GlyphPaint glyphRunPaint(ExpandState& state, const GlyphRunOp& op) {
     double device[6] = {renderer->scale, 0, 0, renderer->scale, 0, 0};
     fillMultiply(device, state.matrix, device);
     uint32_t shader = 0;
-    uint32_t record = appendGradientPaint(renderer, set, op.paint, device, 1, shader, true);
+    uint32_t record = appendGradientPaint(renderer, set, op.paint, device, state.paper, 1, shader, true);
     if (!record || !shader) {
         return paint;
     }
@@ -6991,6 +7001,7 @@ static uint32_t appendGradientPaint(
     const ChunkPathSet& set,
     uint32_t index,
     const double* device,
+    const double* paper,
     float alpha,
     uint32_t& shader,
     bool text
@@ -7033,6 +7044,8 @@ static uint32_t appendGradientPaint(
     paint.d = static_cast<float>(inverse[3]);
     paint.tx = static_cast<float>(inverse[4]);
     paint.ty = static_cast<float>(inverse[5]);
+    paint.paperX = static_cast<float>(paper[0]);
+    paint.paperY = static_cast<float>(paper[1]);
     paint.kind = gradient.kind;
     if (custom) {
         shader = gradient.shader;
@@ -7192,7 +7205,7 @@ static void emitSpanDraws(
         memcpy(draw.color, paletteBytes + fillColor * sizeof(draw.color), sizeof(draw.color));
         if (span.paint && draw.color[3] > 0) {
             draw.paint = paints
-                ? appendGradientPaint(state.renderer, *paints, span.paint, draw.device, draw.color[3], draw.shader)
+                ? appendGradientPaint(state.renderer, *paints, span.paint, draw.device, state.paper, draw.color[3], draw.shader)
                 : 0;
             if (!draw.paint) {
                 draw.color[3] = 0;
@@ -7362,6 +7375,8 @@ static void emitBrushDraw(
     draw.style.seed = params[11];
     draw.style.total = static_cast<float>(span.dabs->total);
     draw.paper = renderer->scale > 0 ? static_cast<float>(1.0 / renderer->scale) : 1.0f;
+    draw.paperX = static_cast<float>(state.paper[0]);
+    draw.paperY = static_cast<float>(state.paper[1]);
     draw.roundedClip = state.roundedClip;
     draw.coverage = state.coverageClip;
     draw.blend = blend;
@@ -8569,6 +8584,18 @@ static const FillPathRecord* chunkClipPath(MetalRenderer* renderer, const PathCl
     return &set.geometry.paths[op.path];
 }
 
+static void pushExpandMatrix(ExpandState& state) {
+    memcpy(state.matrixStack[state.matrixDepth], state.matrix, sizeof(state.matrix));
+    memcpy(state.paperStack[state.matrixDepth], state.paper, sizeof(state.paper));
+    ++state.matrixDepth;
+}
+
+static void popExpandMatrix(ExpandState& state) {
+    --state.matrixDepth;
+    memcpy(state.matrix, state.matrixStack[state.matrixDepth], sizeof(state.matrix));
+    memcpy(state.paper, state.paperStack[state.matrixDepth], sizeof(state.paper));
+}
+
 static bool pushExpandClip(ExpandState& state) {
     if (state.clipDepth >= kExpandDepth) {
         ++state.clipOverflow;
@@ -8632,7 +8659,7 @@ static bool inlinesTransformLayer(const MetalRenderer* renderer, const uint8_t* 
             TranslateOp op;
             if (!readPacketValue(cursor, end, op)) return false;
             ++transforms;
-        } else if (kind == PacketOpPushTransform) {
+        } else if (kind == PacketOpPushTransform || kind == PacketOpPushContentTransform) {
             TransformOp op;
             if (!readPacketValue(cursor, end, op)) return false;
             ++transforms;
@@ -9147,7 +9174,8 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
                 state.roundedClip = state.roundedClipStack[state.clipDepth];
                 state.coverageClip = state.coverageClipStack[state.clipDepth];
             }
-        } else if (kind == PacketOpPushTranslate || kind == PacketOpPushTransform) {
+        } else if (kind == PacketOpPushTranslate || kind == PacketOpPushTransform ||
+                   kind == PacketOpPushContentTransform) {
             double matrix[6] = {1, 0, 0, 1, 0, 0};
             if (kind == PacketOpPushTranslate) {
                 TranslateOp op;
@@ -9163,13 +9191,17 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
                 ++state.matrixOverflow;
                 continue;
             }
-            memcpy(state.matrixStack[state.matrixDepth++], state.matrix, sizeof(state.matrix));
+            pushExpandMatrix(state);
             fillMultiply(state.matrix, matrix, state.matrix);
+            if (kind == PacketOpPushContentTransform) {
+                state.paper[0] = std::round(state.matrix[4] * state.renderer->scale);
+                state.paper[1] = std::round(state.matrix[5] * state.renderer->scale);
+            }
         } else if (kind == PacketOpPopTransform) {
             if (state.matrixOverflow) {
                 --state.matrixOverflow;
             } else if (state.matrixDepth) {
-                memcpy(state.matrix, state.matrixStack[--state.matrixDepth], sizeof(state.matrix));
+                popExpandMatrix(state);
             }
         } else if (kind == PacketOpPushLayer || kind == PacketOpPushMaskLayer || kind == PacketOpPushBlurLayer ||
                    kind == PacketOpPushTransformLayer) {
@@ -9186,7 +9218,7 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
                 op.alpha = turn.alpha;
                 if (turn.alpha >= 1 && !state.blend && state.matrixDepth < kExpandDepth &&
                         inlinesTransformLayer(renderer, cursor, end)) {
-                    memcpy(state.matrixStack[state.matrixDepth++], state.matrix, sizeof(state.matrix));
+                    pushExpandMatrix(state);
                     fillMultiply(state.matrix, turn.matrix, state.matrix);
                     state.inlineLayer = true;
                     continue;
@@ -9338,7 +9370,7 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
         } else if (kind == PacketOpPopLayer) {
             if (state.inlineLayer) {
                 state.inlineLayer = false;
-                memcpy(state.matrix, state.matrixStack[--state.matrixDepth], sizeof(state.matrix));
+                popExpandMatrix(state);
             } else if (state.layerOverflow) {
                 --state.layerOverflow;
             } else if (state.layerDepth) {
@@ -13424,7 +13456,7 @@ static void syncItemState(
         } else {
             TransformOp op;
             memcpy(op.matrix, state.matrix, sizeof(op.matrix));
-            appendPacketOp(renderer, PacketOpPushTransform, op);
+            appendPacketOp(renderer, state.kind == StateContent ? PacketOpPushContentTransform : PacketOpPushTransform, op);
         }
         ensureVectorCapacity(renderer, stack, stack.size() + 1);
         stack.push_back(next);
