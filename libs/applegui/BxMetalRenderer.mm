@@ -626,6 +626,10 @@ struct RunRecord {
     std::vector<AtlasEntry*> entries;
     double entryScale = 0;
     uint64_t entryEpoch = 0;
+    double drawnScale = 0;
+    int64_t drawnFrame = -1;
+    bool scaleChanging = false;
+    bool moving = false;
     float emSize = 0;
     float xHeight = 0;
     bool tinted = false;
@@ -1206,6 +1210,7 @@ struct MetalRenderer {
     std::unordered_map<uint64_t, AtlasEntry> glyphEntries;
     std::unordered_map<uint64_t, uint64_t> glyphProxies;
     bool glyphUploadsDeferred = false;
+    bool glyphAtlasFull = false;
     std::unordered_map<uint64_t, AtlasEntry> imageEntries;
     std::unordered_map<uint64_t, ImageTexture> imageTextures;
     uint64_t imageTextureBytes = 0;
@@ -5428,7 +5433,8 @@ static AtlasEntry* ensureGlyphEntry(
     CGGlyph glyph,
     int subpixel,
     double scale,
-    FrameStats& stats
+    FrameStats& stats,
+    bool& deferred
 ) {
     uint64_t key = glyphKey(font, glyph, subpixel, scale);
     auto found = renderer->glyphEntries.find(key);
@@ -5437,6 +5443,10 @@ static AtlasEntry* ensureGlyphEntry(
         return &found->second;
     }
     if (renderer->glyphUploadsDeferred) {
+        deferred = true;
+        return nullptr;
+    }
+    if (renderer->glyphAtlasFull) {
         return nullptr;
     }
 
@@ -5446,9 +5456,13 @@ static AtlasEntry* ensureGlyphEntry(
         auto inserted = renderer->glyphEntries.emplace(key, empty);
         return &inserted.first->second;
     }
+    if (bitmap.width > kAtlasSize || bitmap.height > kAtlasSize) {
+        return nullptr;
+    }
     uint64_t bytes = static_cast<uint64_t>(bitmap.width) * bitmap.height;
     if (!uploadFits(renderer, bytes)) {
         renderer->glyphUploadsDeferred = true;
+        deferred = true;
         return nullptr;
     }
     uint16_t page = 0;
@@ -5464,7 +5478,7 @@ static AtlasEntry* ensureGlyphEntry(
         x,
         y
     )) {
-        renderer->glyphUploadsDeferred = true;
+        renderer->glyphAtlasFull = true;
         return nullptr;
     }
     [renderer->glyphAtlas.pages[page].texture
@@ -5656,6 +5670,19 @@ static GlyphPaint glyphRunPaint(ExpandState& state, const GlyphRunOp& op) {
 }
 
 static const double kGreekEmPixels = 4.0;
+static const double kGlyphLadderSteps = 4.0;
+
+static const double kGlyphHalfPixelEm = 32.0;
+static const double kGlyphWholePixelEm = 64.0;
+
+static double glyphLadderScale(double scale) {
+    return exp2(ceil(log2(scale) * kGlyphLadderSteps - 1e-6) / kGlyphLadderSteps);
+}
+
+static int glyphSubpixel(double fraction, double emPixels) {
+    int steps = emPixels < kGlyphHalfPixelEm ? 4 : emPixels < kGlyphWholePixelEm ? 2 : 1;
+    return (static_cast<int>(floor(fraction * steps)) * (4 / steps)) & 3;
+}
 static const float kGreekCoverage = 0.37f;
 static const double kQuadCornerInk = (M_PI + 4) / 24;
 
@@ -5721,14 +5748,24 @@ static void expandGlyphRun(
         emitGreekedRun(state, op, run, zoom);
         return;
     }
+    int64_t frame = renderer->frameCount - 1;
+    if (run.drawnFrame != frame) {
+        bool changed = run.drawnScale > 0 && run.drawnScale != glyphScale;
+        run.moving = changed && run.scaleChanging;
+        run.scaleChanging = changed;
+        run.drawnScale = glyphScale;
+        run.drawnFrame = frame;
+    }
+    double rasterScale = run.moving ? glyphLadderScale(glyphScale) : glyphScale;
+    double ratio = glyphScale / rasterScale;
     size_t slots = run.glyphs.size() * 4;
-    if (run.entryScale != glyphScale || run.entryEpoch != renderer->glyphAtlas.evictions ||
+    if (run.entryScale != rasterScale || run.entryEpoch != renderer->glyphAtlas.evictions ||
             run.entries.size() != slots) {
         run.entries.assign(slots, nullptr);
-        run.entryScale = glyphScale;
+        run.entryScale = rasterScale;
         run.entryEpoch = renderer->glyphAtlas.evictions;
     }
-    bool stand = false;
+    bool stand = ratio != 1;
     const float atlasSize = static_cast<float>(kAtlasSize);
     double blockX = op.x * zoom + state.matrix[4];
     double blockY = op.y * zoom + state.matrix[5];
@@ -5746,20 +5783,21 @@ static void expandGlyphRun(
             CTFontRef font = run.fonts[glyph.fontIndex];
             double pen = (blockX + (offsetX + glyph.x) * zoom) * renderer->scale;
             double penFloor = floor(pen);
-            int subpixel = static_cast<int>(floor((pen - penFloor) * 4.0)) & 3;
+            int subpixel = glyphSubpixel(pen - penFloor, CTFontGetSize(font) * rasterScale);
             size_t slot = static_cast<size_t>(line.glyphStart + offset) * 4 + static_cast<size_t>(subpixel);
             AtlasEntry* entry = run.entries[slot];
+            bool deferred = false;
             if (entry) {
                 touchGlyphEntry(renderer, *entry);
             } else {
-                entry = ensureGlyphEntry(renderer, font, glyph.glyph, subpixel, glyphScale, stats);
+                entry = ensureGlyphEntry(renderer, font, glyph.glyph, subpixel, rasterScale, stats, deferred);
                 if (run.entryEpoch != renderer->glyphAtlas.evictions) {
                     run.entries.assign(slots, nullptr);
                     run.entryEpoch = renderer->glyphAtlas.evictions;
                 }
                 run.entries[slot] = entry;
             }
-            AtlasEntry* proxy = entry ? nullptr : findGlyphProxy(renderer, font, glyph.glyph);
+            AtlasEntry* proxy = deferred ? findGlyphProxy(renderer, font, glyph.glyph) : nullptr;
             if (proxy) {
                 stand = true;
                 emitGlyphInstance(
@@ -5801,7 +5839,8 @@ static void expandGlyphRun(
                     baseline,
                     glyph.y,
                     glyph,
-                    paint
+                    paint,
+                    ratio
                 );
             }
         }
@@ -11703,6 +11742,10 @@ extern "C" int64_t brixGuiMetalRunRegister(void* pointer, void* textLayout) {
     run.lines.clear();
     run.fonts.clear();
     run.entries.clear();
+    run.drawnScale = 0;
+    run.drawnFrame = -1;
+    run.scaleChanging = false;
+    run.moving = false;
     run.emSize = 0;
     run.xHeight = 0;
     run.tinted = false;
@@ -12740,6 +12783,7 @@ extern "C" void brixGuiMetalPacketBegin(void* pointer) {
     renderer->fallbackTextures[renderer->packetIndex].clear();
     renderer->frameUploadBytes = 0;
     renderer->glyphUploadsDeferred = false;
+    renderer->glyphAtlasFull = false;
     renderer->frameTextureUploadBytes = 0;
     renderer->frameTileBytes = 0;
     releaseCanvasTextures(renderer);
