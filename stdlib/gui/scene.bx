@@ -2554,6 +2554,8 @@
   (prop + metal-tile-fallbacks Size)
   (prop + origin Point)
   (prop + has-pending-textures _ (=> (or (> (. pending-texture-chunks length) 0) (!= pending-tile-damage null))))
+  (prop + raster-tiled-items F64 (= 24000))
+  (prop + raster-direct-items F64 (= 12000))
   (blank)
   (prop _ roots (list DisplayEntry))
   (prop _ root-order DisplayOrder)
@@ -5235,6 +5237,8 @@
     (blank)
     (let scale (. renderer scale))
     (let level (call raster-fit-level chunk (. view matrix a) seen scale renderer))
+    (return-if false (if (not (call raster-tiles-chunk chunk view level seen))))
+    (blank)
     (let size (call raster-cell-size level scale))
     (let span (call raster-cells seen size))
     (let generation (. chunk path-generation))
@@ -5371,6 +5375,20 @@
     (blank)
     (return (call max (- level 1) raster-lowest-level))
   )
+  (fn-do _ raster-tiles-chunk Bool
+    (param chunk DisplayChunk)
+    (param view RasterView)
+    (param level I32)
+    (param seen Rect)
+    (let index (. chunk cull-index))
+    (let counted (as (+ (- (. view last) (. view first)) 1) F64))
+    (let estimate (if-expr index (call (. index content estimate) seen) counted))
+    (let threshold (if-expr (. chunk raster-tiling) raster-direct-items raster-tiled-items))
+    (= (. chunk raster-tiling) (>= estimate threshold))
+    (return-if true (if (. chunk raster-tiling)))
+    (blank)
+    (return (call raster-lands (. view matrix a) level))
+  )
   (fn-do _ note-raster-damage _
     (param chunk DisplayChunk)
     (param view RasterView)
@@ -5394,7 +5412,7 @@
     (let own (call (. renderer tile-lookup-rendered) (call raster-key chunk level column row) generation))
     (if (!= own 0)
       (if draws
-        (call append-raster-cell view level column row own raster-tile-source (< (call abs (- ratio 1)) 0.000000001) scale renderer)
+        (call append-raster-cell view level column row own raster-tile-source (call raster-lands (. view matrix a) level) scale renderer)
       )
       (return (. RasterCellDraw own))
     )
@@ -7119,6 +7137,7 @@
   (prop + raster-level-drop _ (= false))
   (prop + raster-surface-seen Rect)
   (prop + raster-blocked-pass U32)
+  (prop + raster-tiling _ (= false))
   (prop + sprites (? (list DisplaySprite)))
   (prop + sprite-items (? (list U32)))
   (prop + sprite-mark U32)
@@ -8762,6 +8781,12 @@
   (where
     (lazy ratio (/ zoom (call raster-level-scale level)))
   )
+)
+
+(fn-expr _ raster-lands Bool
+  (param zoom F64)
+  (param level I32)
+  (< (call abs (- (/ zoom (call raster-level-scale level)) 1)) 0.000000001)
 )
 
 (fn-expr _ raster-cover-draw RasterCellDraw
