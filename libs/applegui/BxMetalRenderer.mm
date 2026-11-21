@@ -5622,15 +5622,18 @@ static void emitGreekedRun(ExpandState& state, const GlyphRunOp& op, const RunRe
         if (!(right > left) || !(height > 0)) {
             continue;
         }
+        double width = right - left;
+        double barWidth = std::max(width, 1.0);
+        double barHeight = std::max(height, 1.0);
         Instance instance = {};
         applyContentMask(renderer, op.contentMask, state, instance);
-        instance.rect[0] = static_cast<float>(left);
-        instance.rect[1] = static_cast<float>(baseline - height);
-        instance.rect[2] = static_cast<float>(right - left);
-        instance.rect[3] = static_cast<float>(height);
+        instance.rect[0] = static_cast<float>((left + right - barWidth) * 0.5);
+        instance.rect[1] = static_cast<float>(baseline - (height + barHeight) * 0.5);
+        instance.rect[2] = static_cast<float>(barWidth);
+        instance.rect[3] = static_cast<float>(barHeight);
         instance.color = op.color;
         instance.kind = 0;
-        instance.opacity = kGreekCoverage;
+        instance.opacity = static_cast<float>(kGreekCoverage * width * height / (barWidth * barHeight));
         emitInstance(state, PipelineTier1, nil, instance);
     }
 }
