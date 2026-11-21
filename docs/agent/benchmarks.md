@@ -25,7 +25,8 @@ Benchmarks live beside the code they measure. Each home has a `bench` directory 
 per suite, such as `stdlib/core/bench/stream` or `stdlib/gui/bench/gui`. A suite directory holds
 only benchmark files. Shared fixtures go in the home's `bench/fixtures`: standard-library cases
 import them by module path, such as `/gui/bench/fixtures/scene-bench-fixture`, and other cases by
-relative path. The release leaves `bench` directories out of the installed standard library.
+relative path. The release leaves `bench` directories out of the installed standard library and
+examples.
 
 Benchmarks may also declare an ordered, comma-separated `profiles` list. These are advisory
 recommendations shown by `bin/brix bench list`; they do not restrict other profiles or
