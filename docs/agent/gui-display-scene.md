@@ -109,7 +109,8 @@ time the frame spent in each phase:
 at least the sum of the parts; popups, geometry sync, and the opening frame's layout show only in
 it. `frame` is the Metal frame id, or -1 when the frame did not go through Metal.
 
-`metal-frame-input-latency-nanos` gives the time from the first input event that left work for a
-frame to that frame's presentation. It returns -1 when no such input came, when the frame has not
-presented yet, or when the frame is more than 16 frames old. Presentation trails the commit by
-several frames, so ask about a frame some frames back.
+`metal-frame-input-latency-nanos` gives the time from the first pointer or touch event that left
+work for a frame to that frame's presentation; key and text events carry no timestamp, so they do
+not count. It returns -1 when no such input came or the frame has not presented yet, and may return
+-1 for a frame more than 16 frames old. Presentation trails the commit by several frames, so ask
+about a frame some frames back.
