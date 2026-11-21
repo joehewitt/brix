@@ -2923,11 +2923,11 @@
       (for (in area damage-areas)
         (let aligned (call align-damage-to-device area))
         (call (. renderer push-clip) aligned)
-        (call encode-metal-members roots root-order (call visible-damage aligned surface) renderer)
+        (call encode-metal-members roots root-order (call display-rect-clamp aligned surface) renderer)
         (call (. renderer pop-clip))
       )
       (else
-        (call encode-metal-members roots root-order (call visible-damage clip surface) renderer)
+        (call encode-metal-members roots root-order (call display-rect-clamp clip surface) renderer)
       )
     )
     (if is-offset
@@ -2971,16 +2971,6 @@
     (call trim-metal-tile-canvases)
     (+= metal-frames-encoded 1)
     (return true)
-  )
-  (fn-expr _ visible-damage Rect
-    (param area Rect)
-    (param surface Rect)
-    (case? (or has-backdrop-content has-filter-content)
-      area
-    )
-    (default
-      (call display-rect-clamp area surface)
-    )
   )
   (fn-expr + layer-group-for (? DisplayGroup)
     (param box Box)
@@ -4938,13 +4928,16 @@
     (if (. group is-layer)
       (return-if (if (<= (. group opacity) 0%%)))
       (blank)
+      (if (and (> (. group filters length) 0) (. group has-outer))
+        (= local (. group outer))
+      )
       (let transform (. group transform))
       (let turned (and (!= transform null) (not (. transform is-translation))))
       (if transform
         (let inverse (call (. transform create-inverse)))
         (return-if (if (not inverse)))
         (blank)
-        (= local (call (. inverse transform) parent-damage))
+        (= local (call (. inverse transform) local))
         (if turned
           (call (. renderer push-transform-layer)
             (block
