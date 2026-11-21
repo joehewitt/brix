@@ -41,6 +41,7 @@
 
 (type _ LiveActions (facet-of FunctionEmitter)
   (sees Assignments)
+  (sees Calls)
   (sees Lazies)
   (sees Loops)
   (sees Markup)
@@ -2661,5 +2662,153 @@
       )
     )
     (return null)
+  )
+  (fn-do + settle-memo _
+    (param site SyntaxId)
+    (param object Operand)
+    (param owner TypeId)
+    (param property TypeProperty)
+    ; Before a read of a property whose value is a memo, settles it where its flag is set: its
+    ; memo runs again first.
+    (let flag (call memo-flag-of owner property))
+    (let live (. instances live))
+    (return-if (if (or (== flag (. U32 max)) (== (. live memo-settle) no-instance))))
+    (blank)
+    (let dirty (call (. ir reserve-block)))
+    (let clean (call (. ir reserve-block)))
+    (call branch
+      (block
+        (arg
+          (call compare
+            (block
+              (arg site)
+              (arg .compare-not-equal)
+              (arg (call load object flag u8-layout site))
+              (arg (call integer .machine-u8 0))
+            )
+          )
+        )
+        (arg dirty)
+        (arg clean)
+      )
+    )
+    (call (. ir start-block) dirty)
+    (let mark (. pending length))
+    (+= pending (call num-cast site object managed-layout pointer-layout))
+    (+= pending (call integer .machine-u64 flag))
+    (do
+      (inline (call call-instance (. live memo-settle) site mark))
+    )
+    (call jump clean)
+    (call (. ir start-block) clean)
+  )
+  (fn-do + emit-stream Typed
+    (param id SyntaxId)
+    (param expr SyntaxId)
+    ; A stream of a value as it changes: the value is evaluated while a live action of its own is
+    ; open, whose trackers note what it reads; the channel the type pass found is made, given the
+    ; value by `<-write`, and kept in the local no name reaches declared at the stream; then the
+    ; action is made with those trackers and a callback that writes the value again through the
+    ; function written for it, given the environment in force here.
+    (let nothing (call make-operand .operand-void 0))
+    (let row (call (. tables live-statement-of) (. unit reading) id))
+    (let code
+      (block
+        (case? (and row (!= (. row rerun) no-instance))
+          ([] (. tables instance-functions) (. row rerun))
+        )
+        (default
+          no-function
+        )
+      )
+    )
+    (let slot (call channel-slot id))
+    (let made (call call-at id .call-constructor))
+    (let write (call (. facts call-in-role) (. unit reading) id .role-write))
+    (if (or (== code no-function) (== slot no-slot) (== made no-fact) (== write no-fact))
+      (call refuse .refused-expression id)
+      (return (call Typed nothing no-type))
+    )
+    (let trackers (call open-trackers id))
+    (+= live-actions (call LiveTrackers trackers trackers))
+    (let value (call emit-expression expr))
+    (let held (. value type))
+    (call (. live-actions pop))
+    (let type (call (. facts node-type) (. unit reading) id))
+    (let channel (call emit-fact-call id ([] (. facts calls) made) 0 (call (of RowRange SyntaxId)) 0 0 type))
+    (if (!= (. channel type) type)
+      (call refuse .refused-conversion id)
+    )
+    (do
+      (inline (call call-protocol id write (. channel operand) type (. value operand) held))
+    )
+    (call keep-captured slot (. channel operand) type id)
+    (do
+      (inline
+        (call make-action (call load-local trackers id) adapter (call written-environment id) id
+          (block
+            (lazy adapter (call (. tables live-adapter-of) code))
+          )
+        )
+      )
+    )
+    (return (call Typed (. channel operand) type))
+  )
+  (fn-do + dispatch-change _
+    (param object Operand)
+    (param prior Operand)
+    (param latest Operand)
+    (param layout LayoutId)
+    (param name Atom)
+    (param site SyntaxId)
+    (param always Bool (= false))
+    ; Runs the actions that read a tracked property of an object where a store changed its bits,
+    ; as `bits-differ` says, or `always`. Nothing runs where the object keeps no list of
+    ; subscribers.
+    (let live (. instances live))
+    (let changed
+      (scope (if-expr (not always) (call bits-differ prior latest layout site) unchanged)
+        (lazy unchanged (call make-operand .operand-void 0))
+      )
+    )
+    (let checking (call (. ir reserve-block)))
+    (let sending (call (. ir reserve-block)))
+    (let done (call (. ir reserve-block)))
+    (if always
+      (call jump checking)
+      (else
+        (call branch changed checking done)
+      )
+    )
+    (call (. ir start-block) checking)
+    (let mark (. pending length))
+    (+= pending (call num-cast site object managed-layout pointer-layout))
+    (+= pending (call integer .machine-u64 0))
+    (let subscribers (call call-runtime .runtime-object-side-payload site mark managed-layout))
+    (call branch
+      (block
+        (arg
+          (call compare
+            (block
+              (arg site)
+              (arg .compare-not-equal)
+              (arg (call num-cast site subscribers managed-layout u64-layout))
+              (arg (call integer .machine-u64 0))
+            )
+          )
+        )
+        (arg sending)
+        (arg done)
+      )
+    )
+    (call (. ir start-block) sending)
+    (let sent (. pending length))
+    (+= pending subscribers)
+    (+= pending (call make-operand .operand-constant (call (. ir add-string) (. name text))))
+    (do
+      (inline (call call-instance (. live dispatch) site sent))
+    )
+    (call jump done)
+    (call (. ir start-block) done)
   )
 )
