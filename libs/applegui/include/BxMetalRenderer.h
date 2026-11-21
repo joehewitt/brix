@@ -360,9 +360,11 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     int32_t pool,
     bool settle
 );
-extern "C" bool brixGuiMetalTileFailed(void* renderer, uint64_t retainedKey, uint32_t generation);
 extern "C" bool brixGuiMetalRendererPyramidFull(void* renderer);
-extern "C" bool brixGuiMetalRendererTakeTileIsolate(void* renderer);
+extern "C" bool brixGuiMetalRendererTakeTileRejection(void* renderer);
+extern "C" uint64_t brixGuiMetalRendererTileRejectionKey(void* renderer);
+extern "C" uint32_t brixGuiMetalRendererTileRejectionGeneration(void* renderer);
+extern "C" uint32_t brixGuiMetalRendererTileRejectionTiles(void* renderer);
 extern "C" int64_t brixGuiMetalRendererPyramidTileLimit(void* renderer, int32_t pixels);
 extern "C" int64_t brixGuiMetalPacketCommitTiles(void* renderer);
 extern "C" void brixGuiMetalChunkRelease(void* renderer, uint64_t retainedKey);

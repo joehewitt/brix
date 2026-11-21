@@ -155,8 +155,9 @@ texture's slots. Each tile draws only the items its cull selection touches.
   damage, which keeps `has-pending-textures` true.
 - A want that cannot progress adds none: a key marked failed, a want over the memory cap, or a
   chunk whose resources, index or tile commit failed that frame.
-- A tile rejected while alone in its packet, for a missing glyph or a fill overflow, takes a
-  strike. Three at one generation mark the key failed.
+- The renderer publishes each packet of pyramid tiles it rejects for a missing glyph or a fill
+  overflow, through `take-tile-rejection`. The scene keeps the strikes: a tile rejected while
+  alone in its packet takes one, and three at one generation mark the key failed.
 - A rejected packet of several tiles makes the next packet render one tile.
 
 **Memory.** Pyramid tiles have a cap of three quarters of the tile budget.

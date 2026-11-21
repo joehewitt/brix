@@ -431,10 +431,14 @@ struct TileRecord {
     int64_t lastUsedFrame = -1;
     int64_t renderedFrame = -1;
     int64_t reservedFrame = -1;
-    uint32_t failedGeneration = 0;
-    uint8_t failures = 0;
     bool pyramid = false;
     bool settle = false;
+};
+
+struct TileRejection {
+    uint64_t key = 0;
+    uint32_t generation = 0;
+    uint32_t tiles = 0;
 };
 
 struct TileCopy {
@@ -492,7 +496,7 @@ static void watchMemoryPressure() {
 }
 
 static const size_t kRetiredTileLimit = 4;
-static const uint8_t kTileFailureLimit = 3;
+static const size_t kTileRejectionLimit = 256;
 static const int64_t kAheadTileKeepFrames = 120;
 
 static const int kAtlasSize = 1024;
@@ -1218,7 +1222,8 @@ struct MetalRenderer {
     uint64_t pyramidBytes = 0;
     int64_t lastWindowFrame = -1;
     bool pyramidFull = false;
-    bool tileIsolate = false;
+    std::vector<TileRejection> tileRejections;
+    TileRejection takenRejection;
     id<MTLTexture> tileStaging = nil;
     std::vector<TileCopy> tileCopies;
     std::atomic<int64_t> tileOverflowFrames[4]{{-1}, {-1}, {-1}, {-1}};
@@ -13925,27 +13930,16 @@ static bool isOverflowFrame(MetalRenderer* renderer, int64_t frame) {
     return frame >= 0 && renderer->tileOverflowFrames[frame & 3].load() == frame;
 }
 
-static void noteTileFailure(MetalRenderer* renderer, TileRecord& tile, uint32_t generation) {
-    if (tile.failedGeneration != generation) {
-        tile.failedGeneration = generation;
-        tile.failures = 0;
-    }
-    if (tile.failures < kTileFailureLimit) {
-        ++tile.failures;
-    }
-    if (tile.failures >= kTileFailureLimit && tile.texture) {
-        untrackTileBytes(renderer, tile);
-        retireTileTexture(renderer, tile.texture, tile.lastUsedFrame);
-        tile.texture = nil;
-    }
-}
-
 static void rejectPyramidTiles(MetalRenderer* renderer, const std::vector<uint32_t>& handles) {
-    if (handles.size() == 1) {
-        TileRecord& tile = renderer->tiles[handles[0]];
-        noteTileFailure(renderer, tile, tile.generation);
+    if (renderer->tileRejections.size() >= kTileRejectionLimit) {
+        renderer->tileRejections.erase(renderer->tileRejections.begin());
     }
-    renderer->tileIsolate = true;
+    const TileRecord& first = renderer->tiles[handles[0]];
+    TileRejection rejection;
+    rejection.key = first.key;
+    rejection.generation = first.generation;
+    rejection.tiles = static_cast<uint32_t>(handles.size());
+    renderer->tileRejections.push_back(rejection);
 }
 
 static void settleTileOverflows(MetalRenderer* renderer) {
@@ -14085,31 +14079,35 @@ extern "C" uint64_t brixGuiMetalTileLookupRendered(
     return found->second + 1;
 }
 
-extern "C" bool brixGuiMetalTileFailed(void* pointer, uint64_t retainedKey, uint32_t generation) {
-    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
-    if (!renderer) {
-        return false;
-    }
-    auto found = renderer->tileByKey.find(retainedKey);
-    if (found == renderer->tileByKey.end()) {
-        return false;
-    }
-    const TileRecord& tile = renderer->tiles[found->second];
-    return tile.failedGeneration == generation && tile.failures >= kTileFailureLimit;
-}
 
 extern "C" bool brixGuiMetalRendererPyramidFull(void* pointer) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
     return renderer && renderer->pyramidFull;
 }
 
-extern "C" bool brixGuiMetalRendererTakeTileIsolate(void* pointer) {
+extern "C" bool brixGuiMetalRendererTakeTileRejection(void* pointer) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
-    if (!renderer || !renderer->tileIsolate) {
+    if (!renderer || renderer->tileRejections.empty()) {
         return false;
     }
-    renderer->tileIsolate = false;
+    renderer->takenRejection = renderer->tileRejections.front();
+    renderer->tileRejections.erase(renderer->tileRejections.begin());
     return true;
+}
+
+extern "C" uint64_t brixGuiMetalRendererTileRejectionKey(void* pointer) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    return renderer ? renderer->takenRejection.key : 0;
+}
+
+extern "C" uint32_t brixGuiMetalRendererTileRejectionGeneration(void* pointer) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    return renderer ? renderer->takenRejection.generation : 0;
+}
+
+extern "C" uint32_t brixGuiMetalRendererTileRejectionTiles(void* pointer) {
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    return renderer ? renderer->takenRejection.tiles : 0;
 }
 
 extern "C" int64_t brixGuiMetalRendererPyramidTileLimit(void* pointer, int32_t pixels) {

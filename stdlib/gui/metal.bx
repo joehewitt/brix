@@ -749,16 +749,21 @@
       )
     )
   )
-  (fn-expr + tile-failed Bool
-    (param retained-key U64)
-    (param generation U32)
-    (call C:brixGuiMetalTileFailed renderer retained-key generation)
-  )
   (fn-expr + is-pyramid-full Bool :get
     (call C:brixGuiMetalRendererPyramidFull renderer)
   )
-  (fn-do + take-tile-isolate Bool
-    (return (call C:brixGuiMetalRendererTakeTileIsolate renderer))
+  (fn-do + take-tile-rejection (? MetalTileRejection)
+    (return-if null (if (not (call C:brixGuiMetalRendererTakeTileRejection renderer))))
+    (blank)
+    (return
+      (call MetalTileRejection
+        (block
+          (arg (call C:brixGuiMetalRendererTileRejectionKey renderer))
+          (arg (call C:brixGuiMetalRendererTileRejectionGeneration renderer))
+          (arg (call C:brixGuiMetalRendererTileRejectionTiles renderer))
+        )
+      )
+    )
   )
   (fn-expr + pyramid-tile-limit I64
     (param pixels I32)
@@ -1068,6 +1073,8 @@
   (variant pyramid-cap-bytes (= 42))
 )
 
+(type-line + MetalTileRejection (is (tuple (: key U64) (: generation U32) (: tiles U32))))
+(blank)
 (type + MetalTilePool (is I32)
   (variant general (= 0))
   (variant visible (= 1))
