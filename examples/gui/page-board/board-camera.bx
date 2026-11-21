@@ -19,7 +19,21 @@
   (prop _ anchor _ (= (call Point 0 0)))
   (prop _ aim (? Point) (= null))
   (fn-expr + transform Matrix :get
-    (call Matrix scale 0 0 scale (- (/ (. view width) 2) (* (. center x) scale)) (- (/ (. view height) 2) (* (. center y) scale)))
+    (call transform-at scale center)
+  )
+  (fn-expr + goal-transform (? Matrix) :get
+    (only-if (call transform-at goal goal-center) (if (or (!= scale goal) (!= aim null))))
+  )
+  (fn-expr _ goal-center Point :get
+    (?? aim (call Point (- (. held x) (/ (- (. anchor x) (/ (. view width) 2)) goal)) (- (. held y) (/ (- (. anchor y) (/ (. view height) 2)) goal))))
+    (where
+      (lazy held (call world-point anchor))
+    )
+  )
+  (fn-expr _ transform-at Matrix
+    (param zoom F64)
+    (param middle Point)
+    (call Matrix zoom 0 0 zoom (- (/ (. view width) 2) (* (. middle x) zoom)) (- (/ (. view height) 2) (* (. middle y) zoom)))
   )
   (fn-expr + fit-scale F64 :get
     (* fit-margin (call min (/ (. view width) (call max 1 (. board width))) (/ (. view height) (call max 1 (. board height)))))
