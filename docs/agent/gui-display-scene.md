@@ -76,8 +76,10 @@ Chunk bounds come from per-state ink unions: a recording adds each item's ink to
 `local-ink`, or to the side table's `root-ink` for state 0, and `refresh-bounds` maps one union per
 state through the state's matrix. A transform-only change refreshes bounds without touching items.
 
-`frame-metal` clamps damage to the surface, except when the scene has filter or backdrop content,
-whose sampling reaches outside the damage. A chunk of `display-cull-minimum` or more items without
+Before encoding, `expand-damage` grows damage that touches a backdrop to cover what the backdrop
+samples, and damage that touches a filtered layer to the layer's outer bounds, until neither adds
+more. `frame-metal` then clamps damage to the surface. A layer with filters encodes its members
+over the group's outer bounds, so filter sampling still reaches past the damage. A chunk of `display-cull-minimum` or more items without
 mask or blur layers builds a `DisplayCullIndex` on its second encode after a recording, when the
 damage does not cover its bounds. The index keeps one grid for items under the content transform,
 in content space, and one for the rest, so pan and zoom query it without rebuilding. Each frame
