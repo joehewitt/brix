@@ -110,8 +110,8 @@ at least the sum of the parts; popups, geometry sync, and the opening frame's la
 it. `frame` is the Metal frame id, or -1 when the frame did not go through Metal.
 
 `FrameTicks` sends each tick with `AsyncOnDemandChannel.deliver`, so a loop on `frames` runs
-inside the tick part, before update, and what it changes draws in the same frame. A loop that
-waits stalls the frame.
+inside the tick part, before update, under the instant motion cause, and what it changes draws in
+the same frame. A loop that waits stalls the frame.
 
 `metal-frame-input-latency-nanos` gives the time from the first pointer or touch event that left
 work for a frame to that frame's presentation; key and text events carry no timestamp, so they do
