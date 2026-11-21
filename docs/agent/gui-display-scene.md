@@ -109,7 +109,7 @@ directly.
 **Tiled or direct.** An eligible chunk draws tiled while either holds:
 - its level lands exactly, meaning the scale is a power of two;
 - its cull index estimates at least `raster-tiled-items` visible items. Once tiled, it stays tiled
-  until the estimate falls below `raster-direct-items`.
+  until the estimate falls below the lower of `raster-direct-items` and `raster-tiled-items`.
 
 Both thresholds are `DisplayScene` properties.
 
@@ -135,6 +135,9 @@ within 2.83×.
 
 `PacketOpRasterTile` draws a tile as an axis-aligned quad. It samples nearest, with placement
 rounded to device pixels, when the tile displays at 1:1, and through the area sampler otherwise.
+
+A paint's `paper` coordinate is the device point over the scale. In a tile frame that point is in
+the tile's staging slot, so grain that reads `paper` differs from direct drawing.
 
 **Wants and rendering.** Encoding lists the tiles it wants, in order:
 1. the visible tiles, nearest the viewport center first;
