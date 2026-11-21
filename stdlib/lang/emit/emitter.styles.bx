@@ -3828,4 +3828,44 @@
     (+= pending (. value operand))
     (call call-instance (. flag call) id mark)
   )
+  (fn-do + take-values _
+    (param declared SyntaxId)
+    ; Keeps the values of the rules around rules written in rules that the function that fills an
+    ; object with its class's markup is given, each in a local of its own (`taken-values`).
+    (let held (. ([] (. instances rows) (. unit instance)) context))
+    (if (== held (. U32 max))
+      (return)
+    )
+    (let context ([] (. instances contexts) held))
+    (for (in index (..< 0 (. facts scope-values length)))
+      (let row ([] (. facts scope-values) index))
+      (if (or (!= (. row instance) (. unit reading)) (== (. row argument) (. U32 max)) (!= (call taken-place (as index U32)) null))
+        (continue)
+      )
+      (+= taken-values (call TakenValues (as index U32) (as (. around-values length) U32)))
+      (for (in position (..< 0 (call around-count (as index U32))))
+        (let place (call (. instances value-argument) (. unit instance) (+ (. row argument) position)))
+        (let offset (- (+ (. row argument) position) (call (. instances context-cell-count) held)))
+        (let type ([] (. instances context-value-types) (+ (. context value-first) offset)))
+        (let local (call (. ir add-local) (call layout-of type declared) false))
+        (call store-local
+          (block
+            (arg local)
+            (arg (call make-operand .operand-argument (if-expr (. unit takes-self) (+ place 1) place)))
+            (arg declared)
+          )
+        )
+        (+= around-values (call AroundValue 0 local type))
+      )
+    )
+  )
+  (fn-expr + is-default Bool
+    (param application StyleApplication)
+    (param level TypeId)
+    ; Whether a style rule applied by this instance is one of the defaults of the class `level`.
+    (and own-base (== (. application outer) (. U32 max)) (== (. application made) level))
+    (where
+      (lazy own-base (and (== (. application instance) (. unit instance)) (== (. application layer) 0)))
+    )
+  )
 )
