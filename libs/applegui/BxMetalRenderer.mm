@@ -4207,6 +4207,7 @@ fragment float4 brixGuiMetalRGBAFragment(
     if ((in.kind & kInstanceTemplate) != 0u) {
         sampled = float4(in.color.rgb * in.color.a, in.color.a) * sampled.a;
     }
+    float edge = 1.0;
     if (imageKind >= 7u && imageKind <= 10u) {
         uint edges = (in.kind >> 8u) & 0xfu;
         float2 low = in.local + in.halfSize;
@@ -4215,9 +4216,9 @@ fragment float4 brixGuiMetalRGBAFragment(
         float top = (edges & 2u) != 0u ? saturate(low.y + 0.5) : step(0.0, low.y);
         float right = (edges & 4u) != 0u ? saturate(high.x + 0.5) : step(0.0, high.x);
         float bottom = (edges & 8u) != 0u ? saturate(high.y + 0.5) : step(0.0, high.y);
-        sampled *= left * top * right * bottom;
+        edge = left * top * right * bottom;
     }
-    float inside = step(in.contentMask.x, in.pixelPosition.x) *
+    float inside = edge * step(in.contentMask.x, in.pixelPosition.x) *
         step(in.contentMask.y, in.pixelPosition.y) *
         step(in.pixelPosition.x, in.contentMask.z) *
         step(in.pixelPosition.y, in.contentMask.w);
