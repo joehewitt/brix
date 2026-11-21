@@ -6428,7 +6428,7 @@ static void emitFillDraw(ExpandState& state, FrameFillDraw& draw, const MTLSciss
         renderer->fillBatches.push_back(
             FillBatchInfo{scissor, drawIndex, drawIndex, false, draw.blend != 0, draw.shader}
         );
-        Batch batch = {PipelineFill, nil, scissor, created, 1, draw.blend != 0};
+        Batch batch = {PipelineFill, nil, scissor, created, 1, draw.blend != 0, draw.shader};
         batches.push_back(batch);
     }
     uint32_t fillBatch = batches.back().start;
