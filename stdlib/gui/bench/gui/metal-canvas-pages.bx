@@ -1,4 +1,4 @@
-; benchmark.meta description: Pans a canvas of 100 mock pages, each a background, 30 rows of icon, text line and every third row a badge, through DisplayScene on Metal at 1600x1000 and scale 2 under a content transform, zoomed in on a few pages, at a quarter scale, and far out with every page in view, with frame CPU, GPU, draw calls, encoded items, and CoreGraphics parity evidence per view.
+; benchmark.meta description: Pans a canvas of 100 mock pages, each a background, 30 rows of icon, text line and every third row a badge, through DisplayScene on Metal at 1600x1000 and scale 2 under a content transform, zoomed in on a few pages, at a quarter scale, at 0.14 scale with every page a thumbnail whose icons sit two pixels from their text, and far out with every page in view, with frame CPU, GPU, draw calls, encoded items, and CoreGraphics parity evidence per view.
 ; benchmark.meta timing: not-recommended
 ; benchmark.meta profiles: gui-metal
 (blank)
@@ -26,6 +26,7 @@
 (main
   (let near (call run-canvas-pages 1.0 (call Point -120 -80)))
   (let mid (call run-canvas-pages 0.25 (call Point 40 20)))
+  (let thumb (call run-canvas-pages 0.14 (call Point 120 60)))
   (let far (call run-canvas-pages 0.08 (call Point 200 120)))
   (probe-count gui.bench.metal.pages-near-cpu-p50-ns (. near cpu-p50))
   (probe-count gui.bench.metal.pages-near-gpu-p50-ns (. near gpu-p50))
@@ -37,12 +38,17 @@
   (probe-count gui.bench.metal.pages-mid-draw-calls (. mid draw-calls))
   (probe-count gui.bench.metal.pages-mid-items (. mid items))
   (probe-count gui.bench.metal.pages-mid-diff-ppm (. mid diff-ppm))
+  (probe-count gui.bench.metal.pages-thumb-cpu-p50-ns (. thumb cpu-p50))
+  (probe-count gui.bench.metal.pages-thumb-gpu-p50-ns (. thumb gpu-p50))
+  (probe-count gui.bench.metal.pages-thumb-draw-calls (. thumb draw-calls))
+  (probe-count gui.bench.metal.pages-thumb-items (. thumb items))
+  (probe-count gui.bench.metal.pages-thumb-diff-ppm (. thumb diff-ppm))
   (probe-count gui.bench.metal.pages-far-cpu-p50-ns (. far cpu-p50))
   (probe-count gui.bench.metal.pages-far-gpu-p50-ns (. far gpu-p50))
   (probe-count gui.bench.metal.pages-far-draw-calls (. far draw-calls))
   (probe-count gui.bench.metal.pages-far-items (. far items))
   (probe-count gui.bench.metal.pages-far-diff-ppm (. far diff-ppm))
-  (let checksum (+ (. near items) (. mid items) (. far items)))
+  (let checksum (+ (. near items) (. mid items) (. thumb items) (. far items)))
   (print (str "bench-result gui/metal-canvas-pages checksum=" checksum))
 )
 
