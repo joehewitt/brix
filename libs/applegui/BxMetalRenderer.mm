@@ -1260,6 +1260,7 @@ struct MetalRenderer {
     std::vector<ShaderRequest> shaderRequests;
     std::shared_ptr<ShaderCompiles> shaderCompiles = std::make_shared<ShaderCompiles>();
     bool skippedPendingShader = false;
+    bool tileGlyphsDeferred = false;
     double fillTime = 0;
     id<MTLTexture> depthTexture = nil;
     std::vector<FillGeometryRecord> fillGeometries;
@@ -4861,6 +4862,7 @@ struct ExpandState {
     uint32_t blendDepth = 0;
     uint32_t blendOverflow = 0;
     bool inlineLayer = false;
+    bool tileFrame = false;
     std::vector<Batch>* batchSink;
 };
 
@@ -5754,14 +5756,15 @@ static void expandGlyphRun(
         return;
     }
     int64_t frame = renderer->frameCount - 1;
-    if (run.drawnFrame != frame) {
+    bool tileFrame = state.tileFrame;
+    if (!tileFrame && run.drawnFrame != frame) {
         bool changed = run.drawnScale > 0 && run.drawnScale != glyphScale;
         run.moving = changed && run.scaleChanging;
         run.scaleChanging = changed;
         run.drawnScale = glyphScale;
         run.drawnFrame = frame;
     }
-    double rasterScale = run.moving ? glyphLadderScale(glyphScale) : glyphScale;
+    double rasterScale = run.moving && !tileFrame ? glyphLadderScale(glyphScale) : glyphScale;
     double ratio = glyphScale / rasterScale;
     size_t slots = run.glyphs.size() * 4;
     if (run.entryScale != rasterScale || run.entryEpoch != renderer->glyphAtlas.evictions ||
@@ -5802,8 +5805,10 @@ static void expandGlyphRun(
                 }
                 run.entries[slot] = entry;
             }
-            AtlasEntry* proxy = deferred ? findGlyphProxy(renderer, font, glyph.glyph) : nullptr;
-            if (proxy) {
+            AtlasEntry* proxy = deferred && !tileFrame ? findGlyphProxy(renderer, font, glyph.glyph) : nullptr;
+            if (!entry && tileFrame) {
+                renderer->tileGlyphsDeferred = true;
+            } else if (proxy) {
                 stand = true;
                 emitGlyphInstance(
                     state,
@@ -8741,7 +8746,7 @@ static void mergeBatches(MetalRenderer* renderer) {
     }
 }
 
-static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStats& stats) {
+static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStats& stats, bool tiles) {
     renderer->fillOrder.clear();
     renderer->batchRects.clear();
     renderer->instanceGather.clear();
@@ -8779,6 +8784,7 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
     state.clip = {0, 0, static_cast<double>(renderer->width),
                   static_cast<double>(renderer->height)};
     state.batchSink = &renderer->batches;
+    state.tileFrame = tiles;
 
     const uint8_t* cursor = packet->bytes.data();
     const uint8_t* end = cursor + packet->bytes.size();
@@ -14481,10 +14487,11 @@ static int64_t commitPacket(
     }
     bool encoded = false;
     renderer->skippedPendingShader = false;
+    renderer->tileGlyphsDeferred = false;
     @autoreleasepool {
         fillCompactSegments(renderer);
         compileRequestedShaders(renderer);
-        expandPacket(renderer, packet, stats);
+        expandPacket(renderer, packet, stats, tiles);
         flushImageTileJobs(renderer);
         encoded = encodeFrame(
             renderer,
@@ -14550,7 +14557,7 @@ extern "C" int64_t brixGuiMetalPacketCommitTiles(void* pointer) {
         abandonTileCopies(renderer);
         return -1;
     }
-    if (renderer->skippedPendingShader) {
+    if (renderer->skippedPendingShader || renderer->tileGlyphsDeferred) {
         abandonTileCopies(renderer);
         return frameId;
     }
