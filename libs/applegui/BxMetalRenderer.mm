@@ -938,6 +938,20 @@ struct FillBatchInfo {
     uint32_t shader;
 };
 
+static const uint32_t kBatchRects = 8;
+
+struct BatchRects {
+    float rects[kBatchRects][4];
+    uint32_t count;
+};
+
+struct BatchGroup {
+    uint32_t head;
+    uint32_t tail;
+    uint32_t members;
+    BatchRects bounds;
+};
+
 static const uint32_t kMaxFilterArgs = 1000;
 static const uint32_t kMaxFilterImages = 8;
 
@@ -1260,6 +1274,13 @@ struct MetalRenderer {
     std::unordered_map<uint64_t, DabCacheEntry> dabCache;
     std::vector<CoverageClipRecord> coverageClips;
     std::vector<uint32_t> fillDrawSlots;
+    std::vector<uint32_t> fillOrder;
+    std::vector<uint32_t> instanceGather;
+    uint32_t instanceGatherCount = 0;
+    std::vector<BatchGroup> batchGroups;
+    std::vector<BatchRects> batchRects;
+    std::vector<uint32_t> batchNext;
+    std::vector<uint32_t> fillGroupHeads;
     FillGeometryRecord unitRect;
     id<MTLBuffer> emptyBuffer = nil;
     id<MTLTexture> blankTexture = nil;
@@ -4958,6 +4979,64 @@ static void setFullContentMask(MetalRenderer* renderer, Instance& instance) {
     instance.contentMask[3] = static_cast<float>(renderer->pixelHeight);
 }
 
+static void includeBatchRect(BatchRects& bounds, const float* rect) {
+    if (!(rect[0] < rect[2] && rect[1] < rect[3])) {
+        return;
+    }
+    for (uint32_t index = 0; index < bounds.count; ++index) {
+        float* existing = bounds.rects[index];
+        if (rect[0] <= existing[2] + 2 && existing[0] <= rect[2] + 2 &&
+                rect[1] <= existing[3] + 2 && existing[1] <= rect[3] + 2) {
+            existing[0] = std::min(existing[0], rect[0]);
+            existing[1] = std::min(existing[1], rect[1]);
+            existing[2] = std::max(existing[2], rect[2]);
+            existing[3] = std::max(existing[3], rect[3]);
+            return;
+        }
+    }
+    if (bounds.count < kBatchRects) {
+        memcpy(bounds.rects[bounds.count++], rect, sizeof(float) * 4);
+        return;
+    }
+    uint32_t best = 0;
+    float bestGrowth = INFINITY;
+    for (uint32_t index = 0; index < bounds.count; ++index) {
+        const float* existing = bounds.rects[index];
+        float width = std::max(existing[2], rect[2]) - std::min(existing[0], rect[0]);
+        float height = std::max(existing[3], rect[3]) - std::min(existing[1], rect[1]);
+        float growth = width * height - (existing[2] - existing[0]) * (existing[3] - existing[1]);
+        if (growth < bestGrowth) {
+            bestGrowth = growth;
+            best = index;
+        }
+    }
+    float* chosen = bounds.rects[best];
+    chosen[0] = std::min(chosen[0], rect[0]);
+    chosen[1] = std::min(chosen[1], rect[1]);
+    chosen[2] = std::max(chosen[2], rect[2]);
+    chosen[3] = std::max(chosen[3], rect[3]);
+}
+
+static void noteBatchRect(ExpandState& state, double left, double top, double right, double bottom) {
+    MetalRenderer* renderer = state.renderer;
+    if (state.batchSink != &renderer->batches || renderer->batches.empty()) {
+        return;
+    }
+    size_t index = renderer->batches.size() - 1;
+    std::vector<BatchRects>& rects = renderer->batchRects;
+    if (rects.size() <= index) {
+        ensureVectorCapacity(renderer, rects, index + 1);
+        rects.resize(index + 1, BatchRects{{}, 0});
+    }
+    float rect[4] = {
+        static_cast<float>(floor(left)),
+        static_cast<float>(floor(top)),
+        static_cast<float>(ceil(right)),
+        static_cast<float>(ceil(bottom)),
+    };
+    includeBatchRect(rects[index], rect);
+}
+
 static void emitInstance(
     ExpandState& state,
     uint32_t pipeline,
@@ -4998,6 +5077,17 @@ static void emitInstance(
     clipped.blend = blend;
     instances.push_back(clipped);
     ++batches.back().count;
+    if (state.batchSink == &state.renderer->batches) {
+        double bounds[4];
+        instanceBounds(clipped, bounds);
+        noteBatchRect(
+            state,
+            std::max<double>(bounds[0], scissor.x),
+            std::max<double>(bounds[1], scissor.y),
+            std::min<double>(bounds[2], scissor.x + scissor.width),
+            std::min<double>(bounds[3], scissor.y + scissor.height)
+        );
+    }
 }
 
 static void emitQuads(ExpandState& state, const uint8_t* records, uint32_t count) {
@@ -5032,6 +5122,7 @@ static void emitQuads(ExpandState& state, const uint8_t* records, uint32_t count
     instances.resize(start + count, base);
     Instance* out = instances.data() + start;
     float left = INFINITY, top = INFINITY, right = -INFINITY, bottom = -INFINITY;
+    bool tracked = state.batchSink == &renderer->batches;
     for (uint32_t index = 0; index < count; ++index) {
         QuadOp op;
         memcpy(&op, records + static_cast<size_t>(index) * sizeof(QuadOp), sizeof(QuadOp));
@@ -5046,6 +5137,15 @@ static void emitQuads(ExpandState& state, const uint8_t* records, uint32_t count
         top = std::min(top, instance.rect[1]);
         right = std::max(right, instance.rect[0] + instance.rect[2]);
         bottom = std::max(bottom, instance.rect[1] + instance.rect[3]);
+        if (tracked) {
+            noteBatchRect(
+                state,
+                std::max<double>(instance.rect[0] - 1.0, scissor.x),
+                std::max<double>(instance.rect[1] - 1.0, scissor.y),
+                std::min<double>(instance.rect[0] + instance.rect[2] + 1.0, scissor.x + scissor.width),
+                std::min<double>(instance.rect[1] + instance.rect[3] + 1.0, scissor.y + scissor.height)
+            );
+        }
     }
     batches.back().count += count;
     if (state.layerDepth) {
@@ -6165,6 +6265,10 @@ static void emitFillDraw(ExpandState& state, FrameFillDraw& draw, const MTLSciss
     renderer->fillDraws.push_back(draw);
     renderer->fillBatches[fillBatch].drawEnd = drawIndex + 1;
     renderer->fillBatches[fillBatch].paints |= !source;
+    double extent[4];
+    if (state.batchSink == &renderer->batches && fillDrawExtent(draw, scissor, extent)) {
+        noteBatchRect(state, extent[0], extent[1], extent[2], extent[3]);
+    }
 }
 
 static uint32_t appendCoverage(MetalRenderer* renderer, uint32_t draw, uint32_t parent, uint32_t mode) {
@@ -8239,7 +8343,149 @@ static bool inlinesTransformLayer(const MetalRenderer* renderer, const uint8_t* 
     return false;
 }
 
+static const size_t kMergeLookback = 32;
+
+static bool batchMergeable(const Batch& batch) {
+    return batch.pipeline == PipelineTier1 || batch.pipeline == PipelineMask ||
+        batch.pipeline == PipelineRGBA || batch.pipeline == PipelineFill;
+}
+
+static bool batchesMatch(const Batch& left, const Batch& right) {
+    return left.pipeline == right.pipeline && left.texture == right.texture &&
+        scissorsEqual(left.scissor, right.scissor) && left.blend == right.blend &&
+        left.shader == right.shader;
+}
+
+static bool batchRectsOverlap(const BatchRects& left, const BatchRects& right) {
+    for (uint32_t outer = 0; outer < left.count; ++outer) {
+        const float* a = left.rects[outer];
+        for (uint32_t inner = 0; inner < right.count; ++inner) {
+            const float* b = right.rects[inner];
+            if (a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static void mergeBatches(MetalRenderer* renderer) {
+    std::vector<Batch>& batches = renderer->batches;
+    std::vector<BatchGroup>& groups = renderer->batchGroups;
+    std::vector<uint32_t>& next = renderer->batchNext;
+    groups.clear();
+    ensureVectorCapacity(renderer, next, batches.size());
+    next.assign(batches.size(), UINT32_MAX);
+    size_t barrier = 0;
+    bool merged = false;
+    for (uint32_t index = 0; index < batches.size(); ++index) {
+        const Batch& batch = batches[index];
+        if (!batch.count) {
+            continue;
+        }
+        if (!batchMergeable(batch)) {
+            barrier = groups.size();
+            continue;
+        }
+        BatchRects bounds = index < renderer->batchRects.size() ? renderer->batchRects[index] : BatchRects{{}, 0};
+        size_t target = SIZE_MAX;
+        size_t limit = std::max(barrier, groups.size() > kMergeLookback ? groups.size() - kMergeLookback : 0);
+        for (size_t group = groups.size(); group > limit; --group) {
+            BatchGroup& candidate = groups[group - 1];
+            if (batchesMatch(batches[candidate.head], batch)) {
+                target = group - 1;
+                break;
+            }
+            if (batchRectsOverlap(candidate.bounds, bounds)) {
+                break;
+            }
+        }
+        if (target == SIZE_MAX) {
+            ensureVectorCapacity(renderer, groups, groups.size() + 1);
+            groups.push_back(BatchGroup{index, index, 1, bounds});
+            continue;
+        }
+        BatchGroup& group = groups[target];
+        next[group.tail] = index;
+        group.tail = index;
+        ++group.members;
+        for (uint32_t rect = 0; rect < bounds.count; ++rect) {
+            includeBatchRect(group.bounds, bounds.rects[rect]);
+        }
+        merged = true;
+    }
+    if (!merged) {
+        return;
+    }
+    std::vector<uint32_t>& heads = renderer->fillGroupHeads;
+    ensureVectorCapacity(renderer, heads, renderer->fillBatches.size());
+    heads.assign(renderer->fillBatches.size(), UINT32_MAX);
+    uint32_t base = static_cast<uint32_t>(renderer->instances.size());
+    for (const BatchGroup& group : groups) {
+        if (group.members < 2) {
+            continue;
+        }
+        Batch& head = batches[group.head];
+        if (head.pipeline == PipelineFill) {
+            uint32_t representative = head.start;
+            FillBatchInfo& info = renderer->fillBatches[representative];
+            heads[representative] = group.head;
+            for (uint32_t member = next[group.head]; member != UINT32_MAX; member = next[member]) {
+                uint32_t fillBatch = batches[member].start;
+                const FillBatchInfo& absorbed = renderer->fillBatches[fillBatch];
+                for (uint32_t draw = absorbed.drawStart; draw < absorbed.drawEnd; ++draw) {
+                    renderer->fillDraws[draw].batch = representative;
+                }
+                info.paints = info.paints || absorbed.paints;
+                heads[fillBatch] = UINT32_MAX - 1;
+                batches[member].count = 0;
+            }
+            continue;
+        }
+        uint32_t start = base + renderer->instanceGatherCount;
+        uint32_t total = 0;
+        for (uint32_t member = group.head; member != UINT32_MAX; member = next[member]) {
+            ensureVectorCapacity(renderer, renderer->instanceGather, renderer->instanceGather.size() + 2);
+            renderer->instanceGather.push_back(batches[member].start);
+            renderer->instanceGather.push_back(batches[member].count);
+            total += batches[member].count;
+            if (member != group.head) {
+                batches[member].count = 0;
+            }
+        }
+        head.start = start;
+        head.count = total;
+        renderer->instanceGatherCount += total;
+    }
+    std::vector<uint32_t>& order = renderer->fillOrder;
+    ensureVectorCapacity(renderer, order, renderer->fillDraws.size());
+    order.clear();
+    for (uint32_t fillBatch = 0; fillBatch < renderer->fillBatches.size(); ++fillBatch) {
+        uint32_t head = heads[fillBatch];
+        if (head == UINT32_MAX - 1) {
+            continue;
+        }
+        if (head == UINT32_MAX) {
+            const FillBatchInfo& info = renderer->fillBatches[fillBatch];
+            for (uint32_t draw = info.drawStart; draw < info.drawEnd; ++draw) {
+                order.push_back(draw);
+            }
+            continue;
+        }
+        for (uint32_t member = head; member != UINT32_MAX; member = next[member]) {
+            const FillBatchInfo& info = renderer->fillBatches[batches[member].start];
+            for (uint32_t draw = info.drawStart; draw < info.drawEnd; ++draw) {
+                order.push_back(draw);
+            }
+        }
+    }
+}
+
 static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStats& stats) {
+    renderer->fillOrder.clear();
+    renderer->batchRects.clear();
+    renderer->instanceGather.clear();
+    renderer->instanceGatherCount = 0;
     renderer->roundedClips.clear();
     renderer->coverageClips.clear();
     renderer->instances.clear();
@@ -8801,6 +9047,7 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
         state.blend = renderer->layers[state.layerStack[state.layerDepth]]->blend;
         finishLayer(state, state.layerStack[state.layerDepth]);
     }
+    mergeBatches(renderer);
     stats.layerPasses = static_cast<uint32_t>(renderer->layerOrder.size());
     stats.coverageClips = static_cast<uint32_t>(renderer->coverageClips.size());
     stats.skippedOps += state.skippedMasks;
@@ -9017,7 +9264,10 @@ static bool fillPrepare(MetalRenderer* renderer, FrameStats& stats) {
     std::vector<uint32_t>& drawSlots = renderer->fillDrawSlots;
     ensureVectorCapacity(renderer, drawSlots, drawCapacity);
     drawSlots.assign(drawCapacity, UINT32_MAX);
-    for (size_t frameDraw = 0; frameDraw < drawCapacity; ++frameDraw) {
+    const std::vector<uint32_t>& order = renderer->fillOrder;
+    bool ordered = order.size() == drawCapacity;
+    for (size_t position = 0; position < drawCapacity; ++position) {
+        size_t frameDraw = ordered ? order[position] : position;
         const FrameFillDraw& source = renderer->fillDraws[frameDraw];
         const MTLScissorRect& scissor = renderer->fillBatches[source.batch].scissor;
         if (!scissor.width || !scissor.height) {
@@ -13508,7 +13758,8 @@ static bool encodeFrame(
         }
     }
     size_t mainCount = renderer->instances.size();
-    size_t totalCount = mainCount + damageAreas.size();
+    size_t gatherCount = renderer->instanceGatherCount;
+    size_t totalCount = mainCount + gatherCount + damageAreas.size();
     id<MTLBuffer> instanceBuffer = ensureInstanceBuffer(
         renderer,
         &renderer->instanceBuffers[renderer->packetIndex],
@@ -13535,6 +13786,12 @@ static bool encodeFrame(
     if (mainCount) {
         memcpy(destination, renderer->instances.data(), mainCount * sizeof(Instance));
     }
+    Instance* tail = destination + mainCount;
+    const std::vector<uint32_t>& gather = renderer->instanceGather;
+    for (size_t index = 0; index + 1 < gather.size(); index += 2) {
+        memcpy(tail, renderer->instances.data() + gather[index], gather[index + 1] * sizeof(Instance));
+        tail += gather[index + 1];
+    }
     for (size_t index = 0; index < damageAreas.size(); ++index) {
         const MTLScissorRect& area = damageAreas[index];
         Instance background = {};
@@ -13551,7 +13808,7 @@ static bool encodeFrame(
         );
         background.kind = 0;
         background.opacity = 1;
-        destination[mainCount + index] = background;
+        destination[mainCount + gatherCount + index] = background;
     }
 
     id<MTLCommandBuffer> commandBuffer = rendererCommandBuffer();
@@ -13724,7 +13981,7 @@ static bool encodeFrame(
         PipelineClear,
         nil,
         mainArea,
-        static_cast<uint32_t>(mainCount),
+        static_cast<uint32_t>(mainCount + gatherCount),
         static_cast<uint32_t>(damageAreas.size()),
         false,
     };
