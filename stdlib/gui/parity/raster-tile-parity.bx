@@ -22,6 +22,7 @@
 (prop _ raster-parity-bounds _ (= (call Rect (call Dimensions 768 512))))
 (prop _ raster-parity-scale F64 (= 2))
 (prop _ raster-parity-frames Size (= 8))
+(prop _ raster-parity-second U64 (= 1000000000))
 (prop _ raster-parity-words _ (= (list "Lorem" "ipsum" "dolor" "sit" "amet," "consectetur" "adipiscing" "elit," "sed" "do" "eiusmod" "tempor")))
 
 (main
@@ -34,6 +35,7 @@
   (call (. cases run) fractional-pixel-tests)
   (call (. cases run) exact-landing-tests)
   (call (. cases run) between-levels-tests)
+  (call (. cases run) settled-tests)
   (call (. cases run) tile-text-tests)
   (return cases)
 )
@@ -69,6 +71,14 @@
   (let found (call compare-raster-field offset offset 0.6))
   (call (. t check) "a zoom between levels draws the field from raster tiles" (. found is-tiled))
   (call (. t check) "tiles between levels stay close to direct drawing" (< (. found diff total-delta) (* (. found diff pixel-count) 8)))
+)
+
+(fn-do + settled-tests _
+  (param t TestCase)
+  (let offset (call Point -11.5 -7))
+  (let found (call compare-raster-field offset offset 0.6 true))
+  (call (. t check) "a settled zoom between levels draws the field from raster tiles" (. found is-tiled))
+  (call (. t check) "settled tiles match direct drawing within one 8-bit step" (<= (. found diff maximum-channel-delta) 1))
 )
 
 (fn-do + tile-text-tests _
@@ -112,6 +122,7 @@
   (param tiled-offset Point)
   (param direct-offset Point)
   (param zoom F64 (= 1))
+  (param settles Bool (= false))
   (let bounds raster-parity-bounds)
   (let tiled-root (call SceneParityRoot))
   (let tiled-field (call RasterParityField))
@@ -141,11 +152,15 @@
         (call (. scene build) tiled-root)
         (call (. scene commit))
         (while (and (not is-tiled) (< frames raster-parity-frames))
+          (if settles
+            (= (. scene frame-time) (* (as frames U64) raster-parity-second))
+          )
           (call (. scene reset-frame-counters))
+          (call (. scene damage-pending-textures))
           (call (. scene add-damage) bounds)
           (call (. scene frame-metal) renderer)
           (call (. renderer finish))
-          (= is-tiled (== (. scene items-encoded) 0))
+          (= is-tiled (and (== (. scene items-encoded) 0) (not (. scene has-pending-textures))))
           (+= frames 1)
         )
         (call (. renderer read-into) pixels)

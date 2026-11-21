@@ -433,6 +433,7 @@ struct TileRecord {
     uint32_t failedGeneration = 0;
     uint8_t failures = 0;
     bool pyramid = false;
+    bool settle = false;
 };
 
 struct TileCopy {
@@ -13857,13 +13858,19 @@ static int64_t pyramidKeepFrame(MetalRenderer* renderer, int64_t before) {
     return renderer->lastWindowFrame >= 0 ? std::min(before, renderer->lastWindowFrame) : before;
 }
 
-static uint32_t oldestTile(MetalRenderer* renderer, bool pyramid, int64_t before, uint32_t protectedHandle) {
+static uint32_t oldestTile(
+    MetalRenderer* renderer,
+    bool pyramid,
+    bool settleOnly,
+    int64_t before,
+    uint32_t protectedHandle
+) {
     uint32_t victim = UINT32_MAX;
     int64_t oldest = INT64_MAX;
     for (size_t index = 0; index < renderer->tiles.size(); ++index) {
         const TileRecord& tile = renderer->tiles[index];
         if (!tile.texture || index == protectedHandle || tile.pyramid != pyramid ||
-            tile.lastUsedFrame >= before) {
+            (settleOnly && !tile.settle) || tile.lastUsedFrame >= before) {
             continue;
         }
         if (tile.lastUsedFrame < oldest) {
@@ -13874,11 +13881,16 @@ static uint32_t oldestTile(MetalRenderer* renderer, bool pyramid, int64_t before
     return victim;
 }
 
+static uint32_t oldestPyramidTile(MetalRenderer* renderer, int64_t before, uint32_t protectedHandle) {
+    uint32_t victim = oldestTile(renderer, true, true, before, protectedHandle);
+    return victim != UINT32_MAX ? victim : oldestTile(renderer, true, false, before, protectedHandle);
+}
+
 static void evictTiles(MetalRenderer* renderer, uint64_t budget, int64_t before, uint32_t protectedHandle) {
     while (renderer->tileBytes > budget) {
-        uint32_t victim = oldestTile(renderer, true, pyramidKeepFrame(renderer, before), protectedHandle);
+        uint32_t victim = oldestPyramidTile(renderer, pyramidKeepFrame(renderer, before), protectedHandle);
         if (victim == UINT32_MAX) {
-            victim = oldestTile(renderer, false, before, protectedHandle);
+            victim = oldestTile(renderer, false, false, before, protectedHandle);
         }
         if (victim == UINT32_MAX) {
             return;
@@ -13893,7 +13905,7 @@ static bool evictPyramidTiles(MetalRenderer* renderer, uint64_t budget, uint32_t
         before = std::min(before, renderer->frameCount - kAheadTileKeepFrames);
     }
     while (renderer->pyramidBytes > budget) {
-        uint32_t victim = oldestTile(renderer, true, before, protectedHandle);
+        uint32_t victim = oldestPyramidTile(renderer, before, protectedHandle);
         if (victim == UINT32_MAX) {
             return false;
         }
@@ -14112,7 +14124,8 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     double pointsHeight,
     int32_t slotX,
     int32_t slotY,
-    int32_t pool
+    int32_t pool,
+    bool settle
 ) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
     if (!renderer || !renderer->currentPacket || pixelWidth <= 0 || pixelHeight <= 0 ||
@@ -14146,6 +14159,7 @@ extern "C" uint64_t brixGuiMetalTileReserve(
         tile.pyramid = pyramid;
         trackTileBytes(renderer, tile);
     }
+    tile.settle = pyramid && settle;
     id<MTLTexture> texture = nil;
     if (tile.texture && tile.texture.width == width && tile.texture.height == height &&
         tile.texture.pixelFormat == format && tile.texture.storageMode == MTLStorageModePrivate &&

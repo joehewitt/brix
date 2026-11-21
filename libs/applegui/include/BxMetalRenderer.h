@@ -357,7 +357,8 @@ extern "C" uint64_t brixGuiMetalTileReserve(
     double pointsHeight,
     int32_t slotX,
     int32_t slotY,
-    int32_t pool
+    int32_t pool,
+    bool settle
 );
 extern "C" bool brixGuiMetalTileFailed(void* renderer, uint64_t retainedKey, uint32_t generation);
 extern "C" bool brixGuiMetalRendererPyramidFull(void* renderer);
