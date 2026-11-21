@@ -5084,12 +5084,14 @@ static void emitInstance(
     if (state.batchSink == &state.renderer->batches) {
         double bounds[4];
         instanceBounds(clipped, bounds);
+        uint32_t kind = clipped.kind & 0xffu;
+        double margin = !(clipped.kind & kInstanceAffine) && (kind == 0u || kind == 4u || kind == 5u) ? 1.0 : 0.0;
         noteBatchRect(
             state,
-            std::max<double>(bounds[0], scissor.x),
-            std::max<double>(bounds[1], scissor.y),
-            std::min<double>(bounds[2], scissor.x + scissor.width),
-            std::min<double>(bounds[3], scissor.y + scissor.height)
+            std::max<double>(bounds[0] + margin, scissor.x),
+            std::max<double>(bounds[1] + margin, scissor.y),
+            std::min<double>(bounds[2] - margin, scissor.x + scissor.width),
+            std::min<double>(bounds[3] - margin, scissor.y + scissor.height)
         );
     }
 }
@@ -5144,10 +5146,10 @@ static void emitQuads(ExpandState& state, const uint8_t* records, uint32_t count
         if (tracked) {
             noteBatchRect(
                 state,
-                std::max<double>(instance.rect[0] - 1.0, scissor.x),
-                std::max<double>(instance.rect[1] - 1.0, scissor.y),
-                std::min<double>(instance.rect[0] + instance.rect[2] + 1.0, scissor.x + scissor.width),
-                std::min<double>(instance.rect[1] + instance.rect[3] + 1.0, scissor.y + scissor.height)
+                std::max<double>(instance.rect[0], scissor.x),
+                std::max<double>(instance.rect[1], scissor.y),
+                std::min<double>(instance.rect[0] + instance.rect[2], scissor.x + scissor.width),
+                std::min<double>(instance.rect[1] + instance.rect[3], scissor.y + scissor.height)
             );
         }
     }
@@ -6253,7 +6255,7 @@ static FillGeometryRecord* fillGeometryFor(
     return record.resident && record.generation == generation ? &record : nullptr;
 }
 
-static bool fillDrawExtent(const FrameFillDraw& source, const MTLScissorRect& scissor, double* out) {
+static bool fillDrawExtent(const FrameFillDraw& source, const MTLScissorRect& scissor, double* out, double margin = 1) {
     const double* device = source.device;
     double origin[6] = {
         device[0],
@@ -6265,13 +6267,13 @@ static bool fillDrawExtent(const FrameFillDraw& source, const MTLScissorRect& sc
     };
     double bounds[4];
     transformBounds(origin, source.bounds, bounds);
-    out[0] = std::max({bounds[0] - 1, static_cast<double>(scissor.x),
+    out[0] = std::max({bounds[0] - margin, static_cast<double>(scissor.x),
         static_cast<double>(source.mask[0])});
-    out[1] = std::max({bounds[1] - 1, static_cast<double>(scissor.y),
+    out[1] = std::max({bounds[1] - margin, static_cast<double>(scissor.y),
         static_cast<double>(source.mask[1])});
-    out[2] = std::min({bounds[2] + 1, static_cast<double>(scissor.x + scissor.width),
+    out[2] = std::min({bounds[2] + margin, static_cast<double>(scissor.x + scissor.width),
         static_cast<double>(source.mask[2])});
-    out[3] = std::min({bounds[3] + 1, static_cast<double>(scissor.y + scissor.height),
+    out[3] = std::min({bounds[3] + margin, static_cast<double>(scissor.y + scissor.height),
         static_cast<double>(source.mask[3])});
     return out[0] < out[2] && out[1] < out[3];
 }
@@ -6314,7 +6316,7 @@ static void emitFillDraw(ExpandState& state, FrameFillDraw& draw, const MTLSciss
     renderer->fillBatches[fillBatch].drawEnd = drawIndex + 1;
     renderer->fillBatches[fillBatch].paints |= !source;
     double extent[4];
-    if (state.batchSink == &renderer->batches && fillDrawExtent(draw, scissor, extent)) {
+    if (state.batchSink == &renderer->batches && fillDrawExtent(draw, scissor, extent, 0)) {
         noteBatchRect(state, extent[0], extent[1], extent[2], extent[3]);
     }
 }
