@@ -1166,34 +1166,11 @@
       (= last (call settled pipe-value piped written 0))
       (= last-type (. pipe-value type))
     )
-    (let evaluated U32)
-    (for (in argument ([] (. tree children) written))
-      (let expression argument)
-      (match? ([] (. tree nodes) argument)
-        (case (call .node-argument named)
-          (= expression (. named expr))
-        )
-      )
-      (+= evaluated 1)
-      (let live (only-if (call (. tables live-statement-of) (. unit reading) expression) (if (and (!= (. styling element) 0) (== id (. styling element)) (== expression argument)))))
-      (let trackers (if-expr live (call open-trackers expression) no-local))
-      (if live
-        (+= live-actions (call LiveTrackers trackers trackers))
-      )
-      (let emitted (call emit-expression expression))
-      (let value (call settled emitted expression written evaluated))
-      (if live
-        (call (. live-actions pop))
-        (+= argument-trackers (call LiveMember expression trackers))
-      )
-      (+= given (call Typed value (. emitted type)))
-      (if (and (!= (. styling element) 0) (== id (. styling element)))
-        (+= element-given (call Typed (call apart (call Typed value (. emitted type)) expression true) (. emitted type)))
-      )
-    )
+    (let builds-element (and (!= (. styling element) 0) (== id (. styling element))))
+    (call give-arguments written false builds-element)
     (let attributes (. element-given length))
     (let filled-mark (. element-filled length))
-    (if (and (!= (. styling element) 0) (== id (. styling element)))
+    (if builds-element
       (call emit-attributes id callee fact count)
     )
     (if (and (!= (. styling valued) 0) (== id (. styling valued)))
@@ -1539,9 +1516,11 @@
   (fn-do _ give-arguments _
     (param written (of RowRange SyntaxId))
     (param refuses-named Bool (= false))
+    (param builds-element Bool (= false))
     ; Emits the arguments written for a call in order onto `given`, each settled where one written
     ; after it may change what it read. Where it `refuses-named`, an argument written with a name
-    ; has no shape.
+    ; has no shape. Where the call `builds-element`, Markup keeps each for the element
+    ; (`open-element-argument`, `keep-element-argument`).
     (let evaluated U32)
     (for (in argument ([] (. tree children) written))
       (let expression (call (. tree argument-value) argument))
@@ -1550,8 +1529,13 @@
         (break)
       )
       (+= evaluated 1)
+      (let trackers (if-expr builds-element (call open-element-argument argument expression) no-local))
       (let emitted (call emit-expression expression))
-      (+= given (call Typed (call settled emitted expression written evaluated) (. emitted type)))
+      (let value (call Typed (call settled emitted expression written evaluated) (. emitted type)))
+      (+= given value)
+      (if builds-element
+        (call keep-element-argument expression trackers value)
+      )
     )
   )
   (fn-do _ pass-arguments _
