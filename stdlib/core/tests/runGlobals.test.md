@@ -686,6 +686,52 @@ first read: not yet
 2
 ```
 
+### A task waiting on a lazy global another task is evaluating evaluates it itself where that value panics.
+
+```brix
+(main
+  (let first
+    (do-new
+      (print answer)
+      (on-failure failure
+        (print (str "first: " (. failure message)))
+      )
+    )
+  )
+  (call (. started wait))
+  (let second
+    (do-new
+      (print (str "second: " answer))
+    )
+  )
+  (call (. gate post))
+  (call (. first wait))
+  (call (. second wait))
+  (print (str "tries " tries))
+)
+
+(prop + started _ (= (call Semaphore)))
+(prop + gate _ (= (call Semaphore)))
+(prop + tries _ (= 0))
+(prop + answer _ (:= (call compute)))
+
+(fn-do + compute Int
+  (+= tries 1)
+  (if (== tries 1)
+    (call (. started post))
+    (call (. gate wait))
+    (throw (call Panic "first try"))
+  )
+  (return 7)
+)
+```
+
+```output
+first: first try
+second: 7
+tries 2
+```
+
 ### A lazy global with a declared type converts its value, and an assigning operator evaluates it first.
 
 ```brix
