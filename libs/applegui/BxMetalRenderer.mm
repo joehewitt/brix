@@ -70,6 +70,7 @@ enum PacketOpKind : uint8_t {
     PacketOpPushTransformLayer,
     PacketOpBackdropShader,
     PacketOpQuads,
+    PacketOpRasterTile,
 };
 
 struct QuadOp {
@@ -96,6 +97,13 @@ struct ShapeOp {
 struct TileOp {
     uint64_t handle;
     float x, y, width, height, opacity;
+};
+
+struct RasterTileOp {
+    uint64_t handle;
+    float x, y, width, height;
+    float u, v, uWidth, vHeight;
+    uint32_t exact;
 };
 
 struct SpriteOp {
@@ -8869,6 +8877,42 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
             instance.kind = 3;
             instance.opacity = op.opacity;
             emitInstance(state, PipelineRGBA, tile.texture, instance);
+        } else if (kind == PacketOpRasterTile) {
+            RasterTileOp op;
+            if (!readPacketValue(cursor, end, op)) break;
+            if (op.handle >= renderer->tiles.size() ||
+                renderer->tiles[static_cast<size_t>(op.handle)].texture == nil) {
+                ++stats.skippedOps;
+                continue;
+            }
+            TileRecord& tile = renderer->tiles[static_cast<size_t>(op.handle)];
+            double scale = renderer->scale;
+            double left = (op.x * state.matrix[0] + state.matrix[4]) * scale;
+            double top = (op.y * state.matrix[3] + state.matrix[5]) * scale;
+            double width = op.width * state.matrix[0] * scale;
+            double height = op.height * state.matrix[3] * scale;
+            if (op.exact) {
+                left = round(left);
+                top = round(top);
+                width = round(width);
+                height = round(height);
+            }
+            double textureWidth = static_cast<double>(tile.texture.width);
+            double textureHeight = static_cast<double>(tile.texture.height);
+            Instance instance = {};
+            setFullContentMask(renderer, instance);
+            instance.rect[0] = static_cast<float>(left);
+            instance.rect[1] = static_cast<float>(top);
+            instance.rect[2] = static_cast<float>(width);
+            instance.rect[3] = static_cast<float>(height);
+            instance.params[0] = static_cast<float>(op.u / textureWidth);
+            instance.params[1] = static_cast<float>(op.v / textureHeight);
+            instance.params[2] = static_cast<float>(op.uWidth / textureWidth);
+            instance.params[3] = static_cast<float>(op.vHeight / textureHeight);
+            instance.color = 0xffffffffu;
+            instance.kind = op.exact ? 3u : 7u;
+            instance.opacity = 1;
+            emitInstance(state, PipelineRGBA, tile.texture, instance);
         } else if (kind == PacketOpSprite) {
             SpriteOp op;
             if (!readPacketValue(cursor, end, op)) break;
@@ -13659,6 +13703,38 @@ extern "C" void brixGuiMetalPacketAppendTile(
         renderer->tiles[static_cast<size_t>(tile)].lastUsedFrame = renderer->frameCount;
     }
     appendPacketOp(renderer, PacketOpTile, op);
+}
+
+extern "C" void brixGuiMetalPacketAppendRasterTile(
+    void* pointer,
+    uint64_t tile,
+    double x,
+    double y,
+    double width,
+    double height,
+    double u,
+    double v,
+    double uWidth,
+    double vHeight,
+    bool exact
+) {
+    RasterTileOp op = {
+        tile,
+        static_cast<float>(x),
+        static_cast<float>(y),
+        static_cast<float>(width),
+        static_cast<float>(height),
+        static_cast<float>(u),
+        static_cast<float>(v),
+        static_cast<float>(uWidth),
+        static_cast<float>(vHeight),
+        exact ? 1u : 0u,
+    };
+    MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
+    if (renderer && tile < renderer->tiles.size()) {
+        renderer->tiles[static_cast<size_t>(tile)].lastUsedFrame = renderer->frameCount;
+    }
+    appendPacketOp(renderer, PacketOpRasterTile, op);
 }
 
 extern "C" uint64_t brixGuiMetalTileLookup(

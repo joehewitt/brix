@@ -294,6 +294,19 @@ extern "C" void brixGuiMetalPacketAppendTile(
     double height,
     double opacity
 );
+extern "C" void brixGuiMetalPacketAppendRasterTile(
+    void* renderer,
+    uint64_t tile,
+    double x,
+    double y,
+    double width,
+    double height,
+    double u,
+    double v,
+    double uWidth,
+    double vHeight,
+    bool exact
+);
 extern "C" void brixGuiMetalPacketSetDamageAreas(void* renderer, const double* values, int64_t count);
 extern "C" int64_t brixGuiMetalPacketCommit(
     void* renderer,
