@@ -69,7 +69,10 @@ ships. Unlike the core tests, they show how complete programs are written.
   glyphs, with a panel showing what each frame costs. `herbarium` animates up to 4,000 illustrated
   botanical specimens—ferns, blossoms, vines, seed pods and drifting pollinators—built from cubic
   Bézier fills and strokes, with toggles for animated share, instanced transforms vs. live path
-  deformation, paint tiers and split static/dynamic layers.
+  deformation, paint tiers and split static/dynamic layers. `transit-atlas` renders a zoomable
+  vector transit map of cubic metro loops, long diagonal trunk lines, dashed express and ferry
+  lanes, aligned double tracks and up to 4,000 animated vehicles with click-triggered reroute
+  waves.
 - [`examples/games`](../examples/games): three macOS games, `resonance`, `prism-break` and
   `clatter-hill`, a marble run with sound.
 - [`examples/graphics`](../examples/graphics): macOS windows that draw with the graphics library.
