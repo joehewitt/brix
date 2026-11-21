@@ -6,6 +6,7 @@
 (import /gui/icons/lucide/maximize)
 (import /gui/icons/lucide/play)
 (import /math)
+(import /time/duration)
 (blank)
 (prop _ page-choices _ (= (list 250 1000 4000)))
 
@@ -13,7 +14,8 @@
   (using BoardTheme)
   (prop + page-count _ (= 1000))
   (prop + is-touring _ (= false))
-  (prop + sample _ (= (call FrameSample 1 2 0 0 0 0 0)))
+  (prop + sample _ (= (call FrameSample 1 2 0 0 0 empty-frame-times -1 0 0)))
+  (prop + is-measured _ (= (> (. #sample frames) 0)))
   (content
     (<> This
       (= title "Page Board")
@@ -41,6 +43,14 @@
         )
         (<> Label (• board-stats-line)
           (= text (call frame-line #sample))
+        )
+        (if #is-measured
+          (<> Label (• board-stats-line)
+            (= text (call phase-line #sample))
+          )
+          (<> Label (• board-stats-line)
+            (= text (call latency-line #sample))
+          )
         )
         (<> Label (• board-stats-note)
           (= text "Text under 4 px per em draws as bars; shapes under 3 px as squares.")
@@ -90,10 +100,29 @@
 
 (fn-expr _ frame-line String
   (param sample FrameSample)
-  (if-expr (== (. sample draw-calls) 0)
+  (if-expr (== (. sample frames) 0)
     "Pan, zoom or tour to measure frames"
-    (str (call rounded (. sample frames-per-second) 0) " fps · CPU " (call rounded (. sample cpu-ms) 2) " ms · GPU " (call rounded (. sample gpu-ms) 2) " ms · " (. sample draw-calls) " draw calls")
+    (str (call rounded (. sample frames-per-second) 0) " fps · main thread " (call per-frame sample (. sample times total)) " ms · GPU " (call rounded (. sample gpu-ms) 2) " ms · " (. sample draw-calls) " draw calls")
   )
+)
+
+(fn-expr _ phase-line String
+  (param sample FrameSample)
+  (str "input " (call per-frame sample (. sample times input)) " · tick " (call per-frame sample (. sample times tick)) " · update " (call per-frame sample (. sample times update)) " · layout " (call per-frame sample (. sample times layout)) " · record " (call per-frame sample (. sample times record)) " · encode " (call per-frame sample (. sample times encode)) " (native " (call per-frame sample (. sample times native)) ") · commit " (call per-frame sample (. sample times commit)) " ms")
+)
+
+(fn-expr _ latency-line String
+  (param sample FrameSample)
+  (if-expr (< (. sample latency-ms) 0)
+    "Input to screen: no input in this sample"
+    (str "Input to screen " (call rounded (. sample latency-ms) 1) " ms")
+  )
+)
+
+(fn-expr _ per-frame F64
+  (param sample FrameSample)
+  (param value Nanoseconds)
+  (call rounded (/ (as (as value I64) F64) (* (as (. sample frames) F64) 1000000)) 2)
 )
 
 (fn-expr _ rounded F64

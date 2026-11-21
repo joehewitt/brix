@@ -89,3 +89,27 @@ Drawability is checked from per-state requirements computed with the index, so i
 which items are visible.
 
 Code that edits a recorded chunk's items in place must set its `cull-index` to null.
+
+## Frame times
+
+After each committed frame, `Window.last-frame-times` holds a `FrameTimes` with the main-thread
+time the frame spent in each phase:
+
+| Part | Covers |
+| --- | --- |
+| `input` | event handling since the previous frame, plus resampled scroll dispatch |
+| `tick` | the window clock and the tick handlers it runs |
+| `update` | the markup checkpoint, focus, and settling for paint |
+| `layout` | `layout`, or popup placement alone |
+| `record` | `maintain` |
+| `encode` | `frame-metal` or `frame`; `walk` and `native` are the renderer's packet walk and its native expand and encode within it |
+| `commit` | handing the frame to the window |
+
+`total` runs from the start of the frame to its end and adds the input handled before it, so it is
+at least the sum of the parts; popups, geometry sync, and the opening frame's layout show only in
+it. `frame` is the Metal frame id, or -1 when the frame did not go through Metal.
+
+`metal-frame-input-latency-nanos` gives the time from the first input event that left work for a
+frame to that frame's presentation. It returns -1 when no such input came, when the frame has not
+presented yet, or when the frame is more than 16 frames old. Presentation trails the commit by
+several frames, so ask about a frame some frames back.
