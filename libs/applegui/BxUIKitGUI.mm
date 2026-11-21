@@ -1706,6 +1706,11 @@ brixGuiWindowGetLastFrameEventTime(void* ptr) {
     return guiWindow ? guiWindow->lastFrameEventTimeSeconds : 0;
 }
 
+extern "C" double
+brixGuiEventClockSeconds(void) {
+    return [[NSProcessInfo processInfo] systemUptime];
+}
+
 extern "C" uint64_t brixGuiWindowDebugViewCount(void* window) { return 0; }
 extern "C" uint64_t brixGuiWindowDebugLayerCount(void* window) { return 0; }
 extern "C" void brixGuiWindowDebugInjectContentSize(void* window, double width, double height) {}

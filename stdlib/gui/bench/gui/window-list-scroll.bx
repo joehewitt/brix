@@ -1,0 +1,97 @@
+; benchmark.meta description: Scrolls a 5,000-row list of labelled rows down and back up by trackpad steps in a real 1440 x 900 window at scale 2, reporting each committed frame's main-thread phases, GPU time and scripted input latency.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: gui-window
+(blank)
+(import /graphics/point)
+(import /gui)
+(import /gui/bench/fixtures/window-frame-fixture)
+(import /time/timer)
+(blank)
+(prop _ list-rows Size (= 5000))
+(prop _ list-settle-steps Size (= 30))
+(prop _ list-scroll-steps Size (= 240))
+(prop _ list-steps Size (= 300))
+(prop _ list-scroll-delta F64 (= 12))
+
+(main
+  (<> App
+    (<> ListBenchWindow (• flex-col)
+      (= title "List Scroll")
+      (<> ListBenchScroll (• flex 1)
+        (for (in index (..< 0 list-rows))
+          (<> ListBenchRow (• flex-row) (• items-center) (• px 16) (• gap 12)
+            (<> Label
+              (= text (str "Item " index))
+            )
+            (<> Label
+              (= text (str "Detail for item " index ", long enough to fill part of the row"))
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(type _ ListBenchScroll (is Box)
+  (rule This
+    (= layout flow-col)
+    (= overflow-y (. ScrollOverflow auto))
+  )
+)
+
+(type _ ListBenchRow (is Box)
+  (rule This
+    (= min-height (call (. SizeSpec coord) 28))
+    (= max-height (call (. SizeSpec coord) 28))
+  )
+)
+
+(type + ListBenchWindow (is Window)
+  (prop _ log _ (:= (call WindowBenchLog this)))
+  (prop _ ticks Size)
+  (prop _ ticking _
+    (machine
+      (state live
+        (for (on tick frames)
+          (+= ticks 1)
+        )
+      )
+    )
+  )
+  (fn-do + open _
+    (= state-key null)
+    (= size window-bench-size)
+    (call (. super open))
+    (call (. log start))
+  )
+  (fn-do + end-frame _
+    (param committed Bool)
+    (call (. super end-frame) committed)
+    (call drive committed)
+  )
+  (fn-do _ drive _
+    (param committed Bool)
+    (call (. log after-frame) committed)
+    (let step (. log steps))
+    (if (== step list-steps)
+      (call (. log finish) "gui/window-list-scroll" (+ list-rows list-steps))
+      (return)
+    )
+    (return-if (if (or (< step list-settle-steps) (> step (+ list-settle-steps list-scroll-steps)))))
+    (blank)
+    (let started (call monotonic-time-nanoseconds))
+    (let scrolled (- step list-settle-steps))
+    (let point (call Point 720 450))
+    (if (== scrolled list-scroll-steps)
+      (call (. log scroll) point (call Point 0 0) (. ScrollPhase ended))
+      (else
+        (let down (< scrolled (/ list-scroll-steps 2)))
+        (let delta (if-expr down list-scroll-delta (- list-scroll-delta)))
+        (let phase (if-expr (== scrolled 0) (. ScrollPhase began) (. ScrollPhase changed)))
+        (call (. log scroll) point (call Point 0 delta) phase)
+      )
+    )
+    (call (. log timed) started)
+  )
+)

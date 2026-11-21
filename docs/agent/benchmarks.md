@@ -109,6 +109,30 @@ High dispersion matters. When multiple measured samples vary materially, report 
 environmental caveats rather than presenting a favorable median as conclusive. A faster median is
 not a win if variance, tail latency, allocation, correctness, or another protected metric regresses.
 
+## Windowed Frame Benchmarks
+
+The `gui-window` profile reports each committed frame's `Window.last-frame-times` parts, GPU time,
+and input latency, as p50 and p95 in microseconds, from workloads driven through a real window's
+frame loop. Offscreen benchmarks wait for the GPU every frame and have no window presentation, so
+they cannot show these. `/gui/bench/fixtures/window-frame-fixture` holds the shared
+`WindowBenchLog`; `stdlib/gui/bench/gui/window-list-scroll.bx` and the Page Board benchmarks in
+`examples/gui/page-board/bench` use it.
+
+- **The window.** A benchmark window subclass clears `state-key`, sets `window-bench-size`, 1440 x
+  900, and calls the log's `start` after `open` returns, which panics unless the window has that
+  size at scale 2. Frames from opening and settling are not counted.
+- **Steps.** The window calls the log's `after-frame` from `end-frame` after the base method, and
+  takes one script step per frame, so a step is one display refresh. Something must keep frames
+  coming, such as a tick subscription.
+- **Input.** Scripted pointer input goes through the native pointer callback, stamped with
+  `brixGuiEventClockSeconds`, the clock of real event timestamps and Metal presentation times, so
+  it counts as `input` and the scroll resampler treats it as real. Latency is a best case, since
+  the input always arrives just after a frame.
+- **Work outside the frame.** Work in an `(on tick frames)` handler runs after the frame and shows
+  in no part, so a benchmark that animates there times it with `timed`, reported as `step`.
+- **Rates.** `refresh-us` records the display's refresh interval; compare runs only at equal
+  rates.
+
 ## Run Time
 
 Every sample compiles a fresh executable, and macOS holds the first launch of a new executable

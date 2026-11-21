@@ -235,6 +235,7 @@ extern "C" void brixGuiWindowCancelFrame(void* window);
 extern "C" uint64_t brixGuiWindowGetLastFrameTargetTimeNanoseconds(void* window);
 extern "C" uint64_t brixGuiWindowGetLastFrameRefreshIntervalNanoseconds(void* window);
 extern "C" double brixGuiWindowGetLastFrameEventTime(void* window);
+extern "C" double brixGuiEventClockSeconds(void);
 extern "C" uint64_t brixGuiWindowDebugViewCount(void* window);
 extern "C" uint64_t brixGuiWindowDebugLayerCount(void* window);
 extern "C" void brixGuiWindowDebugInjectContentSize(

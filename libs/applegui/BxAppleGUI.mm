@@ -7303,6 +7303,11 @@ brixGuiWindowGetLastFrameEventTime(void* ptr) {
     return guiWindow ? guiWindow.lastFrameEventTimeSeconds : 0;
 }
 
+extern "C" double
+brixGuiEventClockSeconds(void) {
+    return [[NSProcessInfo processInfo] systemUptime];
+}
+
 static uint64_t
 debugCountViewSubtree(NSView* view) {
     uint64_t count = 1;
