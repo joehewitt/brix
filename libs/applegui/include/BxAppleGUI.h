@@ -441,6 +441,7 @@ extern "C" const char* brixGuiTypeOfPath(const char* path);
 
 extern "C" bool brixGuiTrashPath(const char* path);
 extern "C" bool brixGuiRevealPath(const char* path);
+extern "C" bool brixGuiShowPathInfo(const char* path);
 extern "C" bool brixGuiOpenURL(const char* url);
 extern "C" bool brixGuiOpenPath(const char* path);
 extern "C" bool brixGuiOpenPathWithApp(const char* path, const char* appPath);

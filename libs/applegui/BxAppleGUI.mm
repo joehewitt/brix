@@ -9496,6 +9496,36 @@ brixGuiRevealPath(const char* path) {
 }
 
 extern "C" bool
+brixGuiShowPathInfo(const char* path) {
+    if (!path || !path[0]) {
+        return false;
+    }
+
+    @autoreleasepool {
+        NSURL* url = [NSURL fileURLWithPath:stringFromUTF8(path)];
+        if (![url checkResourceIsReachableAndReturnError:nil]) {
+            return false;
+        }
+        if (@available(macOS 14.0, *)) {
+            [NSApp yieldActivationToApplicationWithBundleIdentifier:@"com.apple.finder"];
+        }
+        NSPasteboard* pasteboard = [NSPasteboard pasteboardWithUniqueName];
+        [pasteboard clearContents];
+        [pasteboard writeObjects:@[url]];
+        bool ok = NSPerformService(@"Finder/Show Info", pasteboard);
+        [pasteboard releaseGlobally];
+        if (ok) {
+            for (NSRunningApplication* finder in
+                 [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.finder"]) {
+                [finder activateWithOptions:0];
+                break;
+            }
+        }
+        return ok;
+    }
+}
+
+extern "C" bool
 brixGuiOpenURL(const char* url) {
     if (!url || !url[0]) {
         return false;

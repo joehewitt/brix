@@ -1948,6 +1948,7 @@ extern "C" const char* brixGuiTypeOfPath(const char* path) { return nullptr; }
 
 extern "C" bool brixGuiTrashPath(const char* path) { return false; }
 extern "C" bool brixGuiRevealPath(const char* path) { return false; }
+extern "C" bool brixGuiShowPathInfo(const char* path) { return false; }
 
 extern "C" bool
 brixGuiOpenURL(const char* url) {
