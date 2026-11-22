@@ -4665,10 +4665,83 @@ guiTextControlTypingAttributes(
 
 @end
 
+static BOOL
+guiTextControlPerformKeyEquivalent(NSTextField* control, NSEvent* event) {
+    if ([event type] != NSEventTypeKeyDown) {
+        return NO;
+    }
+    NSText* editor = [control currentEditor];
+    if (!editor || [[control window] firstResponder] != editor) {
+        return NO;
+    }
+    NSEventModifierFlags flags = [event modifierFlags] &
+        (NSEventModifierFlagCommand | NSEventModifierFlagShift |
+         NSEventModifierFlagOption | NSEventModifierFlagControl);
+    NSString* chars = [[event charactersIgnoringModifiers] lowercaseString];
+    SEL action = nil;
+    if (flags == NSEventModifierFlagCommand) {
+        if ([chars isEqualToString:@"a"]) {
+            action = @selector(selectAll:);
+        } else if ([chars isEqualToString:@"c"]) {
+            action = @selector(copy:);
+        } else if ([chars isEqualToString:@"v"]) {
+            action = @selector(paste:);
+        } else if ([chars isEqualToString:@"x"]) {
+            action = @selector(cut:);
+        } else if ([chars isEqualToString:@"z"]) {
+            action = @selector(undo:);
+        }
+    } else if (flags == (NSEventModifierFlagCommand | NSEventModifierFlagShift)) {
+        if ([chars isEqualToString:@"z"]) {
+            action = @selector(redo:);
+        }
+    } else if (flags == (NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagShift)) {
+        if ([chars isEqualToString:@"v"]) {
+            action = @selector(paste:);
+        }
+    }
+    if (!action) {
+        return NO;
+    }
+    BOOL secure = [control isKindOfClass:[NSSecureTextField class]];
+    if (secure && (action == @selector(copy:) || action == @selector(cut:))) {
+        return NO;
+    }
+    if (![control isEditable] &&
+        (action == @selector(cut:) || action == @selector(paste:) ||
+         action == @selector(undo:) || action == @selector(redo:))) {
+        return NO;
+    }
+    if (action == @selector(cut:) && [editor selectedRange].length == 0) {
+        return YES;
+    }
+    if (action == @selector(undo:) || action == @selector(redo:)) {
+        NSUndoManager* manager = [editor undoManager];
+        BOOL redoes = action == @selector(redo:);
+        if (redoes ? [manager canRedo] : [manager canUndo]) {
+            if (redoes) {
+                [manager redo];
+            } else {
+                [manager undo];
+            }
+            return YES;
+        }
+        return NO;
+    }
+    return [NSApp sendAction:action to:editor from:control];
+}
+
 @implementation BxGuiTextField
 
 + (Class)cellClass {
     return [BxGuiTextFieldCell class];
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent*)event {
+    if (guiTextControlPerformKeyEquivalent(self, event)) {
+        return YES;
+    }
+    return [super performKeyEquivalent:event];
 }
 
 - (NSView*)hitTest:(NSPoint)point {
@@ -4726,6 +4799,13 @@ guiTextControlTypingAttributes(
 @end
 
 @implementation BxGuiSecureTextField
+
+- (BOOL)performKeyEquivalent:(NSEvent*)event {
+    if (guiTextControlPerformKeyEquivalent(self, event)) {
+        return YES;
+    }
+    return [super performKeyEquivalent:event];
+}
 
 - (NSView*)hitTest:(NSPoint)point {
     return guiTextControlContains(self, point) ? [super hitTest:point] : nil;
@@ -5606,10 +5686,28 @@ guiCreateMenuBar(void) {
     return bar;
 }
 
+static NSMenu*
+guiCreateDefaultMenuBar(void) {
+    NSMenu* bar = guiCreateMenuBar();
+    NSMenu* editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    [editMenu addItem:guiAppMenuItem(@"Undo", @selector(undo:), @"z", NSEventModifierFlagCommand)];
+    [editMenu addItem:guiAppMenuItem(@"Redo", @selector(redo:), @"z", NSEventModifierFlagCommand | NSEventModifierFlagShift)];
+    [editMenu addItem:[NSMenuItem separatorItem]];
+    [editMenu addItem:guiAppMenuItem(@"Cut", @selector(cut:), @"x", NSEventModifierFlagCommand)];
+    [editMenu addItem:guiAppMenuItem(@"Copy", @selector(copy:), @"c", NSEventModifierFlagCommand)];
+    [editMenu addItem:guiAppMenuItem(@"Paste", @selector(paste:), @"v", NSEventModifierFlagCommand)];
+    [editMenu addItem:guiAppMenuItem(@"Delete", @selector(delete:), @"", 0)];
+    [editMenu addItem:guiAppMenuItem(@"Select All", @selector(selectAll:), @"a", NSEventModifierFlagCommand)];
+    NSMenuItem* editItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
+    [editItem setSubmenu:editMenu];
+    [bar addItem:editItem];
+    return bar;
+}
+
 static void
 guiInstallDefaultMenuBar(void) {
     if (!guiDefaultMenuBar) {
-        guiDefaultMenuBar = guiCreateMenuBar();
+        guiDefaultMenuBar = guiCreateDefaultMenuBar();
     }
     guiRefreshAppMenu(guiDefaultMenuBar);
     [NSApp setMainMenu:guiDefaultMenuBar];
