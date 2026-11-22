@@ -123,6 +123,7 @@ extern "C" void brixGuiMenuPerformRole(uint32_t role);
 extern "C" void* brixGuiStatusItemCreate(void);
 extern "C" void brixGuiStatusItemRelease(void* item);
 extern "C" void brixGuiStatusItemSetTitle(void* item, const char* title);
+extern "C" void brixGuiStatusItemSetAutosaveName(void* item, const char* name);
 extern "C" void brixGuiStatusItemSetImage(void* item, void* canvas, double width, double height, bool isTemplate);
 extern "C" void brixGuiStatusItemSetMenu(void* item, void* menu);
 extern "C" void brixGuiStatusItemSetContextMenu(void* item, void* menu);

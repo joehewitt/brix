@@ -17,6 +17,7 @@
   (implements MarkupRootElement)
   (prop + app (? App))
   (prop + title _ (= ""))
+  (prop + autosave-name _ (= ""))
   (prop + make-panel (? (of Getter Window)))
   (prop + make-popover (? (of Getter Window)))
   (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
@@ -25,10 +26,14 @@
   (prop _ panel (? Window))
   (blank)
   (depends title-changed title)
+  (depends autosave-name-changed autosave-name)
   (fn-do + open _
     (return-if (if native))
     (blank)
     (= native (call C:brixGuiStatusItemCreate))
+    (if (!= autosave-name "")
+      (call autosave-name-changed)
+    )
     (call C:brixGuiStatusItemSetCallback
       (block
         (arg (!! native))
@@ -71,6 +76,7 @@
     (let shown panel)
     (if (and shown (. shown is-open))
       (call (. shown close))
+      (= panel null)
       (else
         (call open-panel)
       )
@@ -80,6 +86,7 @@
     (let shown panel)
     (if (and shown (. shown is-open))
       (call (. shown close))
+      (= panel null)
     )
   )
   (fn-do + place-panel _
@@ -92,6 +99,11 @@
   (fn-do + title-changed _
     (if native
       (call C:brixGuiStatusItemSetTitle native title)
+    )
+  )
+  (fn-do + autosave-name-changed _
+    (if native
+      (call C:brixGuiStatusItemSetAutosaveName native autosave-name)
     )
   )
   (fn-do _ sync-menu _

@@ -5998,6 +5998,16 @@ brixGuiStatusItemSetTitle(void* ptr, const char* title) {
 }
 
 extern "C" void
+brixGuiStatusItemSetAutosaveName(void* ptr, const char* name) {
+    NSStatusItem* item = (__bridge NSStatusItem*)ptr;
+    if (!item) {
+        return;
+    }
+    NSString* value = stringFromUTF8(name);
+    [item setAutosaveName:[value length] > 0 ? value : nil];
+}
+
+extern "C" void
 brixGuiStatusItemSetImage(void* ptr, void* canvas, double width, double height, bool isTemplate) {
     NSStatusItem* item = (__bridge NSStatusItem*)ptr;
     if (!item) {
@@ -6068,6 +6078,7 @@ static const uint32_t kGuiStatusItemMoved = 2;
 @property(nonatomic, strong) BxGuiWindowHost* popoverWindow;
 @property(nonatomic, strong) id localMonitor;
 @property(nonatomic, strong) id globalMonitor;
+@property(nonatomic, assign) CFTimeInterval lastDismissInAnchorTime;
 @end
 
 @implementation BxGuiStatusItemTarget
@@ -6109,12 +6120,87 @@ static const uint32_t kGuiStatusItemMoved = 2;
     }
 }
 
-- (void)activate:(id)sender {
+- (BOOL)hasOpenSurface {
+    if (self.panel && !self.panel.closed) {
+        return YES;
+    }
+    if (self.popover && self.popoverWindow && !self.popoverWindow.closed) {
+        return YES;
+    }
+    return NO;
+}
+
+- (BOOL)isPointInAnchor:(NSPoint)screenPoint {
+    NSStatusBarButton* button = [self.item button];
+    NSWindow* anchor = [button window];
+    if (!anchor) {
+        return NO;
+    }
+    NSRect buttonRect = [anchor convertRectToScreen:[button convertRect:[button bounds] toView:nil]];
+    NSRect rect = NSUnionRect(buttonRect, [anchor frame]);
+    rect.origin.y -= 1.0;
+    rect.size.height += 3.0;
+    return NSPointInRect(screenPoint, rect);
+}
+
+- (BOOL)isPointInActiveSurface:(NSPoint)screenPoint {
+    if ([self isPointInAnchor:screenPoint]) {
+        return YES;
+    }
+    NSWindow* panelWindow = self.panel && !self.panel.closed ? [self.panel effectiveWindow] : nil;
+    if (panelWindow && [panelWindow isVisible] && NSPointInRect(screenPoint, [panelWindow frame])) {
+        return YES;
+    }
+    NSWindow* popoverWindow = self.popoverWindow && !self.popoverWindow.closed ? [self.popoverWindow effectiveWindow] : nil;
+    if (popoverWindow && [popoverWindow isVisible] && NSPointInRect(screenPoint, [popoverWindow frame])) {
+        return YES;
+    }
+    return NO;
+}
+
+- (BOOL)isEventForAnchor:(NSEvent*)event {
+    NSWindow* anchor = [[self.item button] window];
+    if (!anchor) {
+        return NO;
+    }
+    NSWindow* window = [event window];
+    if (window == anchor) {
+        return YES;
+    }
+    if (window) {
+        return NO;
+    }
+    return [self isPointInAnchor:[NSEvent mouseLocation]];
+}
+
+- (void)handlePrimaryAnchorPress {
+    if ([self hasOpenSurface]) {
+        [self send:kGuiStatusItemDismissed];
+        return;
+    }
+    if (self.lastDismissInAnchorTime > 0 &&
+        (CACurrentMediaTime() - self.lastDismissInAnchorTime) < 0.25) {
+        self.lastDismissInAnchorTime = 0;
+        return;
+    }
+    self.lastDismissInAnchorTime = 0;
     [self send:kGuiStatusItemPressed];
+}
+
+- (void)activate:(id)sender {
+    [self handlePrimaryAnchorPress];
 }
 
 - (void)dismiss:(NSNotification*)notification {
     [self send:kGuiStatusItemDismissed];
+}
+
+- (void)resignActive:(NSNotification*)notification {
+    if ([self hasOpenSurface] && [self isPointInAnchor:[NSEvent mouseLocation]] &&
+        ([NSEvent pressedMouseButtons] != 0)) {
+        self.lastDismissInAnchorTime = CACurrentMediaTime();
+    }
+    [self dismiss:notification];
 }
 
 - (void)anchorMoved:(NSNotification*)notification {
@@ -6123,6 +6209,13 @@ static const uint32_t kGuiStatusItemMoved = 2;
 
 - (void)panelClosed:(NSNotification*)notification {
     [self endPanel];
+}
+
+- (void)popoverWillClose:(NSNotification*)notification {
+    if (notification.object != self.popover) {
+        return;
+    }
+    [self endDismissMonitors];
 }
 
 - (void)popoverDidClose:(NSNotification*)notification {
@@ -6134,7 +6227,8 @@ static const uint32_t kGuiStatusItemMoved = 2;
     if (host && !host.closed) {
         [self send:kGuiStatusItemDismissed];
     }
-    if ([NSApp isActive] && !guiAppHasVisibleWindow()) {
+    if ([NSApp isActive] && !guiAppHasVisibleWindow() &&
+        ![[[NSRunLoop currentRunLoop] currentMode] isEqualToString:NSEventTrackingRunLoopMode]) {
         [NSApp deactivate];
     }
 }
@@ -6155,9 +6249,10 @@ static const uint32_t kGuiStatusItemMoved = 2;
 }
 
 - (NSEvent*)filterPress:(NSEvent*)event {
-    NSWindow* anchor = [[self.item button] window];
-    NSWindow* window = [event window];
-    if (anchor && window == anchor) {
+    if ([self isEventForAnchor:event]) {
+        if (([event modifierFlags] & NSEventModifierFlagCommand) != 0) {
+            return event;
+        }
         BOOL rightPress = [event type] == NSEventTypeRightMouseDown ||
             ([event type] == NSEventTypeLeftMouseDown &&
              (([event modifierFlags] & NSEventModifierFlagControl) != 0));
@@ -6166,15 +6261,16 @@ static const uint32_t kGuiStatusItemMoved = 2;
             return nil;
         }
         if ([event type] == NSEventTypeLeftMouseDown && ![self.item menu]) {
-            [self send:kGuiStatusItemPressed];
+            [self handlePrimaryAnchorPress];
             return nil;
         }
         return event;
     }
-    if (self.panel && ![self.panel ownsWindow:window]) {
+    NSWindow* window = [event window];
+    if (self.panel && !self.panel.closed && ![self.panel ownsWindow:window]) {
         [self send:kGuiStatusItemDismissed];
     }
-    if (self.popoverWindow && ![self.popoverWindow ownsWindow:window]) {
+    if (self.popoverWindow && !self.popoverWindow.closed && ![self.popoverWindow ownsWindow:window]) {
         [self send:kGuiStatusItemDismissed];
     }
     return event;
@@ -6194,11 +6290,14 @@ static const uint32_t kGuiStatusItemMoved = 2;
     __weak BxGuiStatusItemTarget* target = self;
     self.globalMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:kGuiStatusItemPressMask
                                                                 handler:^(NSEvent* event) {
+        if ([target isPointInActiveSurface:[NSEvent mouseLocation]]) {
+            return;
+        }
         [target dismiss:nil];
     }];
     NSNotificationCenter* center = [NSNotificationCenter defaultCenter];
     [center addObserver:self
-               selector:@selector(dismiss:)
+               selector:@selector(resignActive:)
                    name:NSApplicationDidResignActiveNotification
                  object:nil];
     if (watchAnchor) {
@@ -6277,12 +6376,7 @@ static const uint32_t kGuiStatusItemMoved = 2;
     if (!button || !popover || !guiWindow || guiWindow.closed) {
         return;
     }
-    [self beginDismissMonitorsForAnchor:NO];
-    if (@available(macOS 14.0, *)) {
-        [NSApp activate];
-    } else {
-        [NSApp activateIgnoringOtherApps:YES];
-    }
+    [NSApp activateIgnoringOtherApps:YES];
     [popover showRelativeToRect:[button bounds]
                          ofView:button
                   preferredEdge:NSRectEdgeMaxY];
@@ -6292,6 +6386,9 @@ static const uint32_t kGuiStatusItemMoved = 2;
         if ([guiWindow.canvasView acceptsFirstResponder]) {
             [popoverNSWindow makeFirstResponder:guiWindow.canvasView];
         }
+    }
+    if (self.popover == popover && [popover isShown]) {
+        [self beginDismissMonitorsForAnchor:NO];
     }
 }
 
