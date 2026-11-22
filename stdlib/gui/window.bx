@@ -106,6 +106,7 @@
   (prop + next-window (? Window))
   (prop + is-active _ (= false))
   (prop + is-visible _ (= false))
+  (prop + is-embedded _ (= false))
   (prop + starts-hidden _ (= false))
   (prop + has-opened _ (= false))
   (prop + focused-box (? Box))
@@ -677,6 +678,20 @@
       (call settle-cursor-resolution)
     )
   )
+  (fn-do + open-embedded _
+    (param handle Pointer)
+    (throw (call Panic "A closed window cannot be opened again") (if is-finished))
+    (blank)
+    (= is-embedded true)
+    (= is-closed false)
+    (= native handle)
+    (call bind-native)
+    (call (?. app ensure-accents))
+    (call render-opening-frame)
+    (call settle-opening-frame)
+    (= is-visible true)
+    (= has-opened true)
+  )
   (fn-do + open _
     (throw (call Panic "A closed window cannot be opened again") (if is-finished))
     (blank)
@@ -840,89 +855,93 @@
     (if (not native)
       (call set-minimum-heap-goal gui-minimum-heap-goal)
       (= native (call C:brixGuiWindowCreateWithKind title (. size width) (. size height) kind))
-      (= native-transparency-known false)
-      (= requested-native-position null)
-      (call sync-native-transparency)
-      (call sync-native-chrome)
-      (= selected-metal use-metal)
-      (call C:brixGuiWindowSetBackingScaleChangedCallback
-        (block
-          (arg (!! native))
-          (arg (as gui-window-backing-scale-changed GuiWindowFrameCallback))
-          (arg (as this Pointer))
-        )
-      )
-      (call C:brixGuiWindowSetContentSizeChangedCallback
-        (block
-          (arg (!! native))
-          (arg (as gui-window-content-size-changed GuiWindowSizeCallback))
-          (arg (as this Pointer))
-        )
-      )
-      (call C:brixGuiWindowSetMovedCallback
-        (block
-          (arg (!! native))
-          (arg (as gui-window-moved GuiWindowFrameCallback))
-          (arg (as this Pointer))
-        )
-      )
-      (call C:brixGuiWindowSetPointerCallback
-        (block
-          (arg (!! native))
-          (arg (as gui-window-pointer-event GuiWindowPointerCallback))
-          (arg (as this Pointer))
-        )
-      )
-      (call C:brixGuiWindowSetTouchCallback
-        (block
-          (arg (!! native))
-          (arg (as gui-window-touch-event GuiWindowTouchCallback))
-          (arg (as this Pointer))
-        )
-      )
-      (call C:brixGuiWindowSetEventCallback
-        (block
-          (arg (!! native))
-          (arg (as gui-window-native-event GuiWindowEventCallback))
-          (arg (as this Pointer))
-        )
-      )
-      (call C:brixGuiWindowSetTextActionCallback
-        (block
-          (arg (!! native))
-          (arg (as gui-window-text-action GuiWindowTextActionCallback))
-          (arg (as this Pointer))
-        )
-      )
-      (call C:brixGuiWindowSetCursorStyle
-        (block
-          (arg (!! native))
-          (arg (call cursor-style-native-value resolved-cursor-style))
-          (arg (call cursor-style-native-image resolved-cursor-style))
-          (arg resolved-cursor-captured)
-        )
-      )
-      (let accepted
-        (call Dimensions
-          (block
-            (arg (call C:brixGuiWindowGetContentWidth (!! native)))
-            (arg (call C:brixGuiWindowGetContentHeight (!! native)))
-          )
-        )
-      )
-      (= requested-native-size accepted)
-      (if (!= accepted size)
-        (= size accepted)
-      )
+      (call bind-native)
     )
     (blank)
-    (if (!= requested-native-size size)
+    (if (and (not is-embedded) (!= requested-native-size size))
       (= requested-native-size size)
       (call C:brixGuiWindowSetContentSize (!! native) (. size width) (. size height))
     )
     (let requested-position position)
-    (if (and requested-position (!= requested-native-position requested-position))
+    (if (and (not is-embedded) requested-position (!= requested-native-position requested-position))
       (call apply-native-position requested-position)
+    )
+  )
+  (fn-do _ bind-native _
+    (call set-minimum-heap-goal gui-minimum-heap-goal)
+    (= native-transparency-known false)
+    (= requested-native-position null)
+    (call sync-native-transparency)
+    (call sync-native-chrome)
+    (= selected-metal use-metal)
+    (call C:brixGuiWindowSetBackingScaleChangedCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-window-backing-scale-changed GuiWindowFrameCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiWindowSetContentSizeChangedCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-window-content-size-changed GuiWindowSizeCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiWindowSetMovedCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-window-moved GuiWindowFrameCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiWindowSetPointerCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-window-pointer-event GuiWindowPointerCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiWindowSetTouchCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-window-touch-event GuiWindowTouchCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiWindowSetEventCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-window-native-event GuiWindowEventCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiWindowSetTextActionCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-window-text-action GuiWindowTextActionCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiWindowSetCursorStyle
+      (block
+        (arg (!! native))
+        (arg (call cursor-style-native-value resolved-cursor-style))
+        (arg (call cursor-style-native-image resolved-cursor-style))
+        (arg resolved-cursor-captured)
+      )
+    )
+    (let accepted
+      (call Dimensions
+        (block
+          (arg (call C:brixGuiWindowGetContentWidth (!! native)))
+          (arg (call C:brixGuiWindowGetContentHeight (!! native)))
+        )
+      )
+    )
+    (= requested-native-size accepted)
+    (if (!= accepted size)
+      (= size accepted)
     )
   )
   (fn-do + accept-native-focus _

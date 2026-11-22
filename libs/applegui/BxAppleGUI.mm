@@ -36,12 +36,15 @@
 // **********************************************************************************************
 
 @class BxGuiCanvasView;
+@class BxGuiEmbeddedHostView;
 @class BxGuiFlippedView;
 @class BxGuiMetalView;
 @class BxGuiWindowHost;
 @class BxGuiStoplightView;
 @class BxGuiPopupHost;
 @class BxGuiQuickLookPanelController;
+
+extern "C" int NSExtensionMain(int argc, const char** argv);
 
 @interface BxGuiQuickLookPanelController : NSObject <QLPreviewPanelDataSource, QLPreviewPanelDelegate>
 
@@ -806,6 +809,8 @@ static const size_t bxGuiPresentSurfaceLimit = 3;
 }
 
 @property(nonatomic, strong) NSWindow* window;
+@property(nonatomic, assign) BOOL embedded;
+@property(nonatomic, weak) NSView* hostView;
 @property(nonatomic, strong) BxGuiStoplightView* stoplightView;
 @property(nonatomic, assign) BOOL titlebarVisible;
 @property(nonatomic, assign) BOOL panel;
@@ -871,6 +876,7 @@ static const size_t bxGuiPresentSurfaceLimit = 3;
 @property(nonatomic, strong) BxGuiQuickLookPanelController* quickLookPanelController;
 @property(nonatomic, assign) BOOL quickLookControlling;
 
+- (NSWindow*)effectiveWindow;
 - (void)requestRenderFrameWithCallback:(BxGuiActionCallback)callback
                                context:(void*)context
                              notBefore:(uint64_t)notBeforeNanoseconds;
@@ -1472,6 +1478,20 @@ guiMainQueueRemoveSource(void) {
         CFRelease(runLoop);
     }
     guiMainQueueWakePending.store(false, std::memory_order_release);
+}
+
+static bool guiIsExtension = false;
+static uint32_t guiExtensionAppearance = 0;
+
+static void
+guiExtensionRunHost(void*) {
+    guiMainQueueStopRequested.store(false, std::memory_order_release);
+    if (!guiMainQueueInstallSource()) {
+        std::fprintf(stderr, "Unable to install the AppKit main task queue source\n");
+        std::abort();
+    }
+    NSExtensionMain(brixGetArgC(), const_cast<const char**>(brixGetArgV()));
+    guiMainQueueRemoveSource();
 }
 
 static void
@@ -2207,7 +2227,74 @@ guiResponderEditsTextInput(NSResponder* responder) {
     if ([self acceptsFirstResponder]) {
         [[self window] makeFirstResponder:self];
     }
+    if (self.inputHost.embedded) {
+        [self.inputHost handleWindowEvent:event];
+        return;
+    }
     [super mouseDown:event];
+}
+
+- (void)keyDown:(NSEvent*)event {
+    if (self.inputHost.embedded) {
+        unsigned short keyCode = [event keyCode];
+        NSEventModifierFlags flags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
+        if ((keyCode == 49 && flags == 0) || keyCode == 53) {
+            [super keyDown:event];
+            return;
+        }
+        if ([self.inputHost handleKeyEvent:event]) {
+            return;
+        }
+    }
+    [super keyDown:event];
+}
+
+- (void)keyUp:(NSEvent*)event {
+    if (self.inputHost.embedded) {
+        [self.inputHost handleKeyReleaseEvent:event];
+    }
+    [super keyUp:event];
+}
+
+- (void)flagsChanged:(NSEvent*)event {
+    if (self.inputHost.embedded) {
+        [self.inputHost dispatchWindowEventKind:7
+                                            key:0
+                                  nativeKeyCode:0
+                                      modifiers:guiModifierBits([event modifierFlags])
+                                       isRepeat:NO];
+    }
+    [super flagsChanged:event];
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent*)event {
+    if (self.inputHost.embedded && [event type] == NSEventTypeKeyDown) {
+        NSEventModifierFlags flags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
+        NSString* chars = [[event charactersIgnoringModifiers] lowercaseString];
+        if (flags == NSEventModifierFlagCommand) {
+            if ([chars isEqualToString:@"c"]) {
+                [self copy:nil];
+                return YES;
+            }
+            if ([chars isEqualToString:@"a"]) {
+                [self selectAll:nil];
+                return YES;
+            }
+            if ([chars isEqualToString:@"="] || [chars isEqualToString:@"+"]) {
+                [self.inputHost dispatchWindowEventKind:12 key:0 nativeKeyCode:0 modifiers:0 isRepeat:NO];
+                return YES;
+            }
+            if ([chars isEqualToString:@"-"]) {
+                [self.inputHost dispatchWindowEventKind:13 key:0 nativeKeyCode:0 modifiers:0 isRepeat:NO];
+                return YES;
+            }
+            if ([chars isEqualToString:@"0"]) {
+                [self.inputHost dispatchWindowEventKind:14 key:0 nativeKeyCode:0 modifiers:0 isRepeat:NO];
+                return YES;
+            }
+        }
+    }
+    return [super performKeyEquivalent:event];
 }
 
 - (void)setCanvasImage:(CGImageRef)image scale:(CGFloat)scale {
@@ -2707,7 +2794,7 @@ guiFrameSchedulerApplyRunState(BxGuiDisplayLink* entry, bool shouldRun) {
 
 static CGDirectDisplayID
 guiWindowDisplayID(BxGuiWindowHost* guiWindow) {
-    NSScreen* screen = [guiWindow.window screen];
+    NSScreen* screen = [[guiWindow effectiveWindow] screen];
     NSNumber* number = screen ? [[screen deviceDescription] objectForKey:@"NSScreenNumber"] : nil;
     return number ? static_cast<CGDirectDisplayID>([number unsignedIntValue]) : CGMainDisplayID();
 }
@@ -3138,7 +3225,8 @@ guiPresentCanvas(
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     self.frameUpdateOpen = YES;
-    [self setPresentsWithTransaction:self.couplesPresentation || ![self.window isVisible]];
+    NSWindow* activeWindow = [self effectiveWindow];
+    [self setPresentsWithTransaction:self.couplesPresentation || !activeWindow || ![activeWindow isVisible]];
 }
 
 - (void)finishFrameUpdate {
@@ -3150,8 +3238,9 @@ guiPresentCanvas(
     CALayer* layer = [self.metalView layer];
     BOOL flushes = !self.couplesPresentation && [layer isKindOfClass:[CAMetalLayer class]] &&
         static_cast<CAMetalLayer*>(layer).presentsWithTransaction;
-    if (flushes && self.window) {
-        [self.window layoutIfNeeded];
+    NSWindow* activeWindow = [self effectiveWindow];
+    if (flushes && activeWindow) {
+        [activeWindow layoutIfNeeded];
     }
     [CATransaction commit];
     if (flushes) {
@@ -3278,8 +3367,13 @@ guiPresentCanvas(
         brixRemoveRoot(self.eventContextRoot);
         self.eventContextRoot = nullptr;
     }
-    [self.window setDelegate:nil];
-    [self.window close];
+    if (self.embedded) {
+        [self.canvasView removeFromSuperview];
+        [self.metalView removeFromSuperview];
+    } else {
+        [self.window setDelegate:nil];
+        [self.window close];
+    }
 }
 
 - (BOOL)windowShouldClose:(NSWindow*)sender {
@@ -3450,7 +3544,7 @@ guiPresentCanvas(
     if (!window) {
         return NO;
     }
-    if (window == self.window) {
+    if (window == [self effectiveWindow]) {
         return YES;
     }
     for (BxGuiPopupHost* popup in self.popupHosts) {
@@ -3525,21 +3619,23 @@ guiPresentCanvas(
 }
 
 - (NSPoint)currentWindowPointerPoint {
+    NSWindow* window = [self effectiveWindow];
+    if (!window) {
+        return NSZeroPoint;
+    }
     NSPoint screenPoint = [NSEvent mouseLocation];
     NSRect screenRect = NSMakeRect(screenPoint.x, screenPoint.y, 0, 0);
-    return [self.window convertRectFromScreen:screenRect].origin;
+    return [window convertRectFromScreen:screenRect].origin;
 }
 
 - (NSPoint)windowPointForEvent:(NSEvent*)event {
-    // Preserve the location attached to the event being dispatched. Looking the cursor up again
-    // can observe a newer global position and either reject this event at the native-control seam
-    // or deliver it to the wrong managed row.
-    if (event && [event window] == self.window) {
+    NSWindow* window = [self effectiveWindow];
+    if (event && [event window] == window) {
         return [event locationInWindow];
     }
-    if (event && [event window]) {
+    if (event && [event window] && window) {
         NSPoint screenPoint = [[event window] convertPointToScreen:[event locationInWindow]];
-        return [self.window convertPointFromScreen:screenPoint];
+        return [window convertPointFromScreen:screenPoint];
     }
     return [self currentWindowPointerPoint];
 }
@@ -3558,12 +3654,14 @@ guiPresentCanvas(
             return !controlsBlock || ![popup nativeControlBlocksWindowPoint:windowPoint];
         }
     }
-    const NSWindowButton kinds[] = {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton};
-    for (NSWindowButton kind : kinds) {
-        NSButton* button = [self.window standardWindowButton:kind];
-        if (button && ![button isHiddenOrHasHiddenAncestor] &&
-            NSPointInRect([button convertPoint:windowPoint fromView:nil], button.bounds)) {
-            return NO;
+    if (!self.embedded && self.window) {
+        const NSWindowButton kinds[] = {NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton};
+        for (NSWindowButton kind : kinds) {
+            NSButton* button = [self.window standardWindowButton:kind];
+            if (button && ![button isHiddenOrHasHiddenAncestor] &&
+                NSPointInRect([button convertPoint:windowPoint fromView:nil], button.bounds)) {
+                return NO;
+            }
         }
     }
     NSPoint canvasPoint = [self.canvasView convertPoint:windowPoint fromView:nil];
@@ -3608,7 +3706,7 @@ guiPresentCanvas(
     if (!self.eventCallback || self.closed) {
         return NO;
     }
-    NSResponder* responder = [([event window] ?: self.window) firstResponder];
+    NSResponder* responder = [([event window] ?: [self effectiveWindow]) firstResponder];
     if (guiResponderPeerOwnsKeys(responder)) {
         return NO;
     }
@@ -3804,11 +3902,12 @@ guiPresentCanvas(
 }
 
 - (NSRect)textInputScreenRect {
-    if (!self.contentView || !self.window) {
+    NSWindow* window = [self effectiveWindow];
+    if (!self.contentView || !window) {
         return NSZeroRect;
     }
     NSRect windowRect = [self.contentView convertRect:self.textInputCaret toView:nil];
-    return [self.window convertRectToScreen:windowRect];
+    return [window convertRectToScreen:windowRect];
 }
 
 - (NSTextInputContext*)activeTextInputContext {
@@ -3843,7 +3942,7 @@ guiPresentCanvas(
 
 - (void)handleKeyReleaseEvent:(NSEvent*)event {
     if (!self.eventCallback || self.closed ||
-        guiResponderPeerOwnsKeys([([event window] ?: self.window) firstResponder])) {
+        guiResponderPeerOwnsKeys([([event window] ?: [self effectiveWindow]) firstResponder])) {
         return;
     }
 
@@ -4080,6 +4179,10 @@ guiPresentCanvas(
     [self dispatchDrop:info kind:accepted ? 12 : 11 windowPoint:windowPoint];
     self.dropOperation = 0;
     return accepted;
+}
+
+- (NSWindow*)effectiveWindow {
+    return self.embedded ? [self.hostView window] : self.window;
 }
 
 - (void)requestRenderFrameWithCallback:(BxGuiActionCallback)callback
@@ -5098,6 +5201,12 @@ guiWatchApplicationAppearance(NSApplication* application);
 static NSApplication*
 ensureApplication() {
     NSApplication* application = [NSApplication sharedApplication];
+    if (guiIsExtension) {
+        if (application) {
+            guiWatchApplicationAppearance(application);
+        }
+        return application;
+    }
     BOOL isAgent = [[[NSBundle mainBundle] objectForInfoDictionaryKey:@"LSUIElement"] boolValue];
     [application setActivationPolicy:isAgent ? NSApplicationActivationPolicyAccessory
                                              : NSApplicationActivationPolicyRegular];
@@ -5555,6 +5664,9 @@ brixGuiAppSetKeepsDisplayAwake(void* app, bool keeps) {
 
 extern "C" uint32_t
 brixGuiSystemAppearance(void) {
+    if (guiIsExtension && guiExtensionAppearance != 0) {
+        return guiExtensionAppearance;
+    }
     NSAppearance* appearance = [NSApplication sharedApplication].effectiveAppearance;
     NSAppearanceName match = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
     return [match isEqualToString:NSAppearanceNameDarkAqua] ? 2 : 1;
@@ -6181,13 +6293,17 @@ brixGuiWindowCreate(const char* title, double width, double height) {
 extern "C" void
 brixGuiWindowSetTransparent(void* ptr, bool windowTransparent, bool contentTransparent) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window) {
+    if (!guiWindow) {
         return;
     }
-    [guiWindow.window setOpaque:!windowTransparent];
-    [guiWindow.window setBackgroundColor:windowTransparent ? [NSColor clearColor] : [NSColor windowBackgroundColor]];
+    if (!guiWindow.embedded && guiWindow.window) {
+        [guiWindow.window setOpaque:!windowTransparent];
+        [guiWindow.window setBackgroundColor:windowTransparent ? [NSColor clearColor] : [NSColor windowBackgroundColor]];
+    }
     [[guiWindow.metalView layer] setOpaque:!contentTransparent];
-    [guiWindow markShadowStale];
+    if (!guiWindow.embedded) {
+        [guiWindow markShadowStale];
+    }
 }
 
 static NSAppearance*
@@ -6204,7 +6320,7 @@ guiAppearanceNamed(uint32_t appearance) {
 extern "C" void
 brixGuiWindowSetAppearance(void* ptr, uint32_t appearance) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window) {
+    if (!guiWindow || guiWindow.embedded || !guiWindow.window) {
         return;
     }
     NSAppearance* chosen = guiAppearanceNamed(appearance);
@@ -6217,7 +6333,8 @@ brixGuiWindowSetAppearance(void* ptr, uint32_t appearance) {
 extern "C" void*
 brixGuiWindowGetNativeWindow(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    return guiWindow ? (__bridge void*)guiWindow.window : nullptr;
+    NSWindow* window = guiWindow ? [guiWindow effectiveWindow] : nil;
+    return window ? (__bridge void*)window : nullptr;
 }
 
 extern "C" void
@@ -6274,18 +6391,32 @@ brixGuiWindowHide(void* ptr) {
 extern "C" bool
 brixGuiWindowIsVisible(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    return guiWindow && guiWindow.window && !guiWindow.closed && [guiWindow.window isVisible];
+    if (!guiWindow || guiWindow.closed) {
+        return false;
+    }
+    if (guiWindow.embedded) {
+        return true;
+    }
+    return guiWindow.window && [guiWindow.window isVisible];
 }
 
 extern "C" void
 brixGuiWindowClose(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window || guiWindow.closed) {
+    if (!guiWindow || guiWindow.closed) {
         return;
     }
     guiWindow.closed = YES;
     guiWindow->inputStreamState->cancel();
     [guiWindow cancelRenderFrame];
+    if (guiWindow.embedded) {
+        [guiWindow.canvasView removeFromSuperview];
+        [guiWindow.metalView removeFromSuperview];
+        return;
+    }
+    if (!guiWindow.window) {
+        return;
+    }
     [guiWindow.window close];
     if (guiWindow.panel && [NSApp isActive] && !guiAppHasVisibleWindow()) {
         [NSApp deactivate];
@@ -6303,7 +6434,7 @@ brixGuiWindowSetAllowsZoom(void* ptr, bool allowsZoom) {
 extern "C" void
 brixGuiWindowSetKind(void* ptr, uint32_t kind) {
     BxGuiWindowHost* host = getWindow(ptr);
-    if (!host || host.closed) {
+    if (!host || host.closed || host.embedded || !host.window) {
         return;
     }
     BOOL panel = kind == 1;
@@ -6355,7 +6486,7 @@ extern "C" void
 brixGuiWindowSetChrome(
     void* ptr, bool titlebarVisible, bool hasStoplightOffset, double x, double y, double zoom) {
     BxGuiWindowHost* host = getWindow(ptr);
-    if (!host || host.closed || host.panel) return;
+    if (!host || host.closed || host.panel || host.embedded || !host.window) return;
     host.hasStoplightOffset = hasStoplightOffset;
     host.stoplightOffset = NSMakePoint(std::isfinite(x) ? x : 0, std::isfinite(y) ? y : 0);
     host.stoplightZoom = std::isfinite(zoom) && zoom > 0 ? zoom : 1;
@@ -6450,7 +6581,8 @@ brixGuiWindowGetContentHeight(void* ptr) {
 extern "C" bool
 brixGuiWindowDisplayIsWideGamut(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    NSScreen* screen = guiWindow && guiWindow.window ? [guiWindow.window screen] : nil;
+    NSWindow* window = guiWindow ? [guiWindow effectiveWindow] : nil;
+    NSScreen* screen = window ? [window screen] : nil;
     if (!screen) {
         screen = [NSScreen mainScreen];
     }
@@ -6460,13 +6592,17 @@ brixGuiWindowDisplayIsWideGamut(void* ptr) {
 extern "C" void*
 brixGuiWindowGetDisplayColorSpace(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window) {
+    if (!guiWindow) {
+        return nullptr;
+    }
+    NSWindow* window = [guiWindow effectiveWindow];
+    if (!window && !guiWindow.embedded) {
         return nullptr;
     }
 
-    NSColorSpace* colorSpace = [guiWindow.window colorSpace];
-    if (!colorSpace) {
-        colorSpace = [[guiWindow.window screen] colorSpace];
+    NSColorSpace* colorSpace = window ? [window colorSpace] : nil;
+    if (!colorSpace && window) {
+        colorSpace = [[window screen] colorSpace];
     }
     if (!colorSpace) {
         colorSpace = [[NSScreen mainScreen] colorSpace];
@@ -6576,10 +6712,18 @@ brixGuiWindowSetMovedCallback(
 extern "C" double
 brixGuiWindowGetBackingScaleFactor(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window) {
+    if (!guiWindow) {
         return 1.0;
     }
-    CGFloat scale = [guiWindow.window backingScaleFactor];
+    NSWindow* window = [guiWindow effectiveWindow];
+    if (!window) {
+        if (guiWindow.embedded) {
+            CGFloat screenScale = [[NSScreen mainScreen] backingScaleFactor];
+            return screenScale > 0 ? screenScale : 1.0;
+        }
+        return 1.0;
+    }
+    CGFloat scale = [window backingScaleFactor];
     return scale > 0 ? scale : 1.0;
 }
 
@@ -6741,7 +6885,8 @@ brixGuiWindowDebugTextInputActive(void* ptr) {
 extern "C" void
 brixGuiWindowSetCursorStyle(void* ptr, uint32_t cursorStyle, void* cursorImage, bool captured) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window) {
+    NSWindow* window = guiWindow ? [guiWindow effectiveWindow] : nil;
+    if (!guiWindow || (!window && !guiWindow.embedded)) {
         return;
     }
     NSCursor* customCursor = (__bridge NSCursor*)cursorImage;
@@ -6764,20 +6909,22 @@ brixGuiWindowSetCursorStyle(void* ptr, uint32_t cursorStyle, void* cursorImage, 
         popup.metalView.cursorStyle = cursorStyle;
     }
     if (captured) {
-        if (!wasCaptured) {
-            [guiWindow.window disableCursorRects];
+        if (!wasCaptured && window) {
+            [window disableCursorRects];
         }
         [guiCursorForStyle(cursorStyle, false, customCursor) set];
         return;
     }
     ++guiWindow.cursorRectRefreshCount;
-    [guiWindow.window invalidateCursorRectsForView:guiWindow.canvasView];
-    [guiWindow.window invalidateCursorRectsForView:guiWindow.metalView];
+    if (window) {
+        [window invalidateCursorRectsForView:guiWindow.canvasView];
+        [window invalidateCursorRectsForView:guiWindow.metalView];
+    }
     for (BxGuiPopupHost* popup in guiWindow.popupHosts) {
         [popup.panel invalidateCursorRectsForView:popup.canvasView];
     }
-    if (wasCaptured) {
-        [guiWindow.window enableCursorRects];
+    if (wasCaptured && window) {
+        [window enableCursorRects];
     }
 }
 
@@ -6864,19 +7011,20 @@ guiRestoreResponder(NSView* subtree, NSResponder* responder, NSRange selection) 
 extern "C" bool
 brixGuiWindowFocusCanvas(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window || guiWindow.closed) {
+    NSWindow* window = guiWindow ? [guiWindow effectiveWindow] : nil;
+    if (!guiWindow || !window || guiWindow.closed) {
         return false;
     }
     NSWindow* keyWindow = [NSApp keyWindow];
-    if (keyWindow && keyWindow != guiWindow.window && [guiWindow ownsWindow:keyWindow]) {
+    if (!guiWindow.embedded && keyWindow && keyWindow != window && [guiWindow ownsWindow:keyWindow]) {
         [keyWindow makeFirstResponder:nil];
-        [guiWindow.window makeKeyWindow];
+        [window makeKeyWindow];
     }
-    if ([guiWindow.window firstResponder] == guiWindow.canvasView) {
+    if ([window firstResponder] == guiWindow.canvasView) {
         return true;
     }
     guiWindow.canvasView.takesFocus = YES;
-    bool focused = [guiWindow.window makeFirstResponder:guiWindow.canvasView];
+    bool focused = [window makeFirstResponder:guiWindow.canvasView];
     guiWindow.canvasView.takesFocus = NO;
     return focused;
 }
@@ -6964,11 +7112,12 @@ guiPeerWindowHost(NSView* control) {
 
 static void
 guiInvalidateCanvasCursorRects(BxGuiWindowHost* guiWindow) {
-    if (!guiWindow || !guiWindow.window) {
+    NSWindow* window = guiWindow ? [guiWindow effectiveWindow] : nil;
+    if (!guiWindow || !window) {
         return;
     }
-    [guiWindow.window invalidateCursorRectsForView:guiWindow.canvasView];
-    [guiWindow.window invalidateCursorRectsForView:guiWindow.metalView];
+    [window invalidateCursorRectsForView:guiWindow.canvasView];
+    [window invalidateCursorRectsForView:guiWindow.metalView];
     for (BxGuiPopupHost* popup in guiWindow.popupHosts) {
         [popup.panel invalidateCursorRectsForView:popup.canvasView];
         [popup.panel invalidateCursorRectsForView:popup.metalView];
@@ -7165,7 +7314,8 @@ brixGuiWindowCommitFrame(
         return;
     }
 
-    CGFloat scale = guiWindow.window ? [guiWindow.window backingScaleFactor] : 1.0;
+    NSWindow* window = [guiWindow effectiveWindow];
+    CGFloat scale = window ? [window backingScaleFactor] : (guiWindow.embedded ? ([[NSScreen mainScreen] backingScaleFactor] ?: 1.0) : 1.0);
     [guiWindow.canvasView setCanvasSurface:surface scale:scale];
     [guiWindow finishFrameUpdate];
     guiRecordResizeFrameCommit(guiWindow);
@@ -7396,6 +7546,9 @@ guiPresentationVisibility(NSWindow* window) {
 extern "C" int32_t
 brixGuiWindowPresentationVisibility(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
+    if (guiWindow && guiWindow.embedded) {
+        return guiWindow.closed ? BxGuiPresentationHidden : BxGuiPresentationUnoccluded;
+    }
     return guiPresentationVisibility(guiWindow ? guiWindow.window : nil);
 }
 
@@ -7435,8 +7588,9 @@ brixGuiWindowResetCanvasLayer(void* ptr) {
 extern "C" int32_t
 brixGuiWindowGetMaximumFramesPerSecond(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    NSScreen* screen = guiWindow && guiWindow.window
-        ? [guiWindow.window screen]
+    NSWindow* window = guiWindow ? [guiWindow effectiveWindow] : nil;
+    NSScreen* screen = window
+        ? [window screen]
         : [NSScreen mainScreen];
     if (!screen) {
         return 60;
@@ -8583,14 +8737,27 @@ brixGuiPopupGetScreenBound(void* ptr, uint32_t component) {
 extern "C" double
 brixGuiWindowGetScreenBound(void* ptr, uint32_t component) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window || !guiWindow.contentView) {
+    if (!guiWindow || !guiWindow.contentView) {
         return 0;
     }
-    NSScreen* screen = [guiWindow.window screen] ?: [NSScreen mainScreen];
+    NSWindow* window = [guiWindow effectiveWindow];
+    if (!window) {
+        if (guiWindow.embedded) {
+            NSRect bounds = [guiWindow.contentView bounds];
+            switch (component) {
+                case 0: return bounds.origin.x;
+                case 1: return bounds.origin.y;
+                case 2: return bounds.size.width;
+                default: return bounds.size.height;
+            }
+        }
+        return 0;
+    }
+    NSScreen* screen = [window screen] ?: [NSScreen mainScreen];
     if (!screen) {
         return 0;
     }
-    NSRect windowRect = [guiWindow.window convertRectFromScreen:[screen visibleFrame]];
+    NSRect windowRect = [window convertRectFromScreen:[screen visibleFrame]];
     NSRect content = [guiWindow.contentView convertRect:windowRect fromView:nil];
     switch (component) {
         case 0: return content.origin.x;
@@ -10240,4 +10407,418 @@ brixGuiCursorHotspotX(void* cursor) {
 extern "C" double
 brixGuiCursorHotspotY(void* cursor) {
     return cursor ? [((__bridge NSCursor*)cursor) hotSpot].y : 0;
+}
+
+static BxGuiQuickLookPreviewCallback guiQuickLookPreviewCallback = nullptr;
+static BxGuiQuickLookCloseCallback guiQuickLookCloseCallback = nullptr;
+static void* guiQuickLookExtensionContext = nullptr;
+static void* guiQuickLookExtensionContextRoot = nullptr;
+
+struct BxGuiQuickLookCompletion {
+    void (^handler)(NSError* _Nullable);
+    NSURL* accessedURL;
+};
+
+struct BxGuiQuickLookPreviewRecord : BxGuiCallbackRecord {
+    BxGuiQuickLookPreviewRecord(
+        BxGuiQuickLookPreviewCallback aCallback,
+        void* aContext,
+        void* aHostWindow,
+        std::string aPath,
+        BxGuiQuickLookCompletion* aCompletion):
+        BxGuiCallbackRecord(aContext),
+        callback(aCallback),
+        hostWindow(aHostWindow),
+        path(std::move(aPath)),
+        completion(aCompletion) {}
+    BxGuiQuickLookPreviewCallback callback;
+    void* hostWindow;
+    std::string path;
+    BxGuiQuickLookCompletion* completion;
+};
+
+struct BxGuiQuickLookCloseRecord : BxGuiCallbackRecord {
+    BxGuiQuickLookCloseRecord(
+        BxGuiQuickLookCloseCallback aCallback,
+        void* aContext,
+        BxGuiWindowHost* aHost):
+        BxGuiCallbackRecord(aContext),
+        callback(aCallback),
+        host(aHost) {}
+    BxGuiQuickLookCloseCallback callback;
+    BxGuiWindowHost* host;
+};
+
+static void
+guiFinishQuickLookCompletion(BxGuiQuickLookCompletion* completion, const char* errorMessage) {
+    if (!completion) {
+        return;
+    }
+    NSURL* accessedURL = completion->accessedURL;
+    void (^handler)(NSError* _Nullable) = completion->handler;
+    delete completion;
+    NSError* error = nil;
+    if (errorMessage && *errorMessage) {
+        error = [NSError errorWithDomain:@"BxGuiQuickLook"
+                                    code:1
+                                userInfo:@{NSLocalizedDescriptionKey: stringFromUTF8(errorMessage)}];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (accessedURL) {
+            [accessedURL stopAccessingSecurityScopedResource];
+        }
+        if (handler) {
+            handler(error);
+        }
+    });
+}
+
+static void
+guiRunQuickLookPreviewCallback(void* closure) {
+    BxGuiQuickLookPreviewRecord* record = static_cast<BxGuiQuickLookPreviewRecord*>(closure);
+    if (!brixProcessTerminationRequested() && record->callback) {
+        record->callback(
+            record->context,
+            record->hostWindow,
+            record->path.c_str(),
+            record->completion
+        );
+    } else {
+        if (record->hostWindow) {
+            CFRelease(record->hostWindow);
+        }
+        guiFinishQuickLookCompletion(record->completion, "Preview extension unavailable");
+    }
+    guiFinishCallbackTask(record);
+}
+
+static void
+guiRunQuickLookCloseCallback(void* closure) {
+    BxGuiQuickLookCloseRecord* record = static_cast<BxGuiQuickLookCloseRecord*>(closure);
+    if (!brixProcessTerminationRequested() && record->callback && record->host) {
+        record->callback(record->context, (__bridge void*)record->host);
+    }
+    guiFinishCallbackTask(record);
+}
+
+@interface BxGuiEmbeddedHostView : BxGuiFlippedView
+
+@property(nonatomic, weak) BxGuiWindowHost* guiWindow;
+@property(nonatomic, strong) NSTrackingArea* pointerTrackingArea;
+@property(nonatomic, assign) NSSize lastNotifiedSize;
+
+- (void)updateAppearance;
+- (void)notifySizeIfNeeded;
+
+@end
+
+@implementation BxGuiEmbeddedHostView
+
+- (void)updateAppearance {
+    NSAppearance* appearance = [self effectiveAppearance];
+    NSAppearanceName match = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
+    uint32_t next = [match isEqualToString:NSAppearanceNameDarkAqua] ? 2 : 1;
+    if (guiExtensionAppearance != next) {
+        guiExtensionAppearance = next;
+        if (guiAppSystemCallback) {
+            guiScheduleActionCallback(guiAppSystemCallback, guiAppSystemContext, 0);
+        }
+    }
+}
+
+- (void)notifySizeIfNeeded {
+    NSSize current = [self bounds].size;
+    if (current.width <= 0 || current.height <= 0 || NSEqualSizes(current, self.lastNotifiedSize)) {
+        return;
+    }
+    self.lastNotifiedSize = current;
+    BxGuiWindowHost* guiWindow = self.guiWindow;
+    if (!guiWindow || guiWindow.closed || guiWindow.frameUpdateOpen) {
+        return;
+    }
+    uint64_t budgetNanoseconds = guiWindow.lastFrameRefreshIntervalNanoseconds
+        ? guiWindow.lastFrameRefreshIntervalNanoseconds
+        : kGuiResizeDefaultNanosecondBudget;
+    guiWindow.couplesPresentation = YES;
+    guiReceiveContentSizeNotification(guiWindow, guiDeadlineAfter(budgetNanoseconds));
+    guiWindow.couplesPresentation = NO;
+}
+
+- (void)setFrameSize:(NSSize)newSize {
+    [super setFrameSize:newSize];
+    [self notifySizeIfNeeded];
+}
+
+- (void)layout {
+    [super layout];
+    [self notifySizeIfNeeded];
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    NSWindow* window = [self window];
+    if (window) {
+        [window setAcceptsMouseMovedEvents:YES];
+        [self updateAppearance];
+        if (self.guiWindow && !self.guiWindow.closed) {
+            guiReceiveBackingScaleNotification(self.guiWindow);
+        }
+        [self notifySizeIfNeeded];
+    }
+}
+
+- (void)viewDidChangeBackingProperties {
+    [super viewDidChangeBackingProperties];
+    if (self.guiWindow && !self.guiWindow.closed) {
+        guiReceiveBackingScaleNotification(self.guiWindow);
+    }
+}
+
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    [self updateAppearance];
+}
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    if (self.pointerTrackingArea) {
+        return;
+    }
+    NSTrackingArea* trackingArea = [[NSTrackingArea alloc]
+        initWithRect:NSZeroRect
+             options:NSTrackingMouseMoved |
+                     NSTrackingMouseEnteredAndExited |
+                     NSTrackingActiveAlways |
+                     NSTrackingInVisibleRect
+               owner:self
+            userInfo:nil
+    ];
+    self.pointerTrackingArea = trackingArea;
+    [self addTrackingArea:trackingArea];
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+    return YES;
+}
+
+- (void)mouseDown:(NSEvent*)event {
+    BxGuiWindowHost* guiWindow = self.guiWindow;
+    if (!guiWindow || guiWindow.closed) {
+        return;
+    }
+    if ([guiWindow.canvasView acceptsFirstResponder]) {
+        [[self window] makeFirstResponder:guiWindow.canvasView];
+    }
+    [guiWindow handleWindowEvent:event];
+}
+
+- (void)mouseDragged:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)mouseUp:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)rightMouseDown:(NSEvent*)event {
+    BxGuiWindowHost* guiWindow = self.guiWindow;
+    if (!guiWindow || guiWindow.closed) {
+        return;
+    }
+    if ([guiWindow.canvasView acceptsFirstResponder]) {
+        [[self window] makeFirstResponder:guiWindow.canvasView];
+    }
+    [guiWindow handleWindowEvent:event];
+}
+
+- (void)rightMouseDragged:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)rightMouseUp:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)otherMouseDown:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)otherMouseDragged:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)otherMouseUp:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)mouseMoved:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)mouseEntered:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)mouseExited:(NSEvent*)event {
+    [self.guiWindow handleWindowEvent:event];
+}
+
+- (void)scrollWheel:(NSEvent*)event {
+    [self.guiWindow dispatchPointerEvent:event kind:4];
+}
+
+- (void)magnifyWithEvent:(NSEvent*)event {
+    [self.guiWindow dispatchPointerEvent:event kind:7];
+}
+
+@end
+
+static BxGuiWindowHost*
+guiCreateEmbeddedWindowHost(BxGuiEmbeddedHostView* hostView) {
+    ensureApplication();
+    brixGuiMetalWarmUp();
+
+    NSRect bounds = [hostView bounds];
+    BxGuiCanvasView* canvasView = [[BxGuiCanvasView alloc] initWithFrame:bounds];
+    [canvasView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [canvasView setWantsLayer:YES];
+    CALayer* canvasLayer = [CALayer layer];
+    [canvasView setLayer:canvasLayer];
+    [canvasView setLayerContentsRedrawPolicy:NSViewLayerContentsRedrawNever];
+    [canvasLayer setContentsGravity:kCAGravityResize];
+    [hostView addSubview:canvasView positioned:NSWindowBelow relativeTo:nil];
+
+    BxGuiMetalView* metalView = [[BxGuiMetalView alloc] initWithFrame:bounds];
+    [metalView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [metalView setWantsLayer:YES];
+    [metalView setLayerContentsRedrawPolicy:NSViewLayerContentsRedrawNever];
+    [metalView setHidden:YES];
+    [hostView addSubview:metalView positioned:NSWindowAbove relativeTo:canvasView];
+
+    BxGuiWindowHost* guiWindow = [[BxGuiWindowHost alloc] init];
+    guiWindow->inputStreamState = std::make_shared<BxGuiInputStreamState>();
+    guiWindow.embedded = YES;
+    guiWindow.hostView = hostView;
+    guiWindow.titlebarVisible = NO;
+    guiWindow.contentView = hostView;
+    guiWindow.canvasView = canvasView;
+    guiWindow.metalView = metalView;
+    canvasView.inputHost = guiWindow;
+    hostView.guiWindow = guiWindow;
+    hostView.lastNotifiedSize = bounds.size;
+
+    return guiWindow;
+}
+
+@interface BxGuiQuickLookViewController : NSViewController <QLPreviewingController>
+
+@property(nonatomic, strong) BxGuiWindowHost* guiWindow;
+
+@end
+
+@implementation BxGuiQuickLookViewController
+
+- (void)loadView {
+    BxGuiEmbeddedHostView* hostView = [[BxGuiEmbeddedHostView alloc] initWithFrame:NSMakeRect(0, 0, 860, 700)];
+    [hostView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [hostView setWantsLayer:YES];
+    self.view = hostView;
+    self.preferredContentSize = NSMakeSize(860, 700);
+}
+
+- (void)detachCurrentPreview {
+    BxGuiWindowHost* current = self.guiWindow;
+    if (!current) {
+        return;
+    }
+    self.guiWindow = nil;
+    current.closed = YES;
+    current->inputStreamState->cancel();
+    [current cancelRenderFrame];
+    [current.canvasView removeFromSuperview];
+    [current.metalView removeFromSuperview];
+    if (guiQuickLookCloseCallback) {
+        BxGuiQuickLookCloseRecord* record = new BxGuiQuickLookCloseRecord(
+            guiQuickLookCloseCallback,
+            guiQuickLookExtensionContext,
+            current
+        );
+        if (!brixScheduleMainTaskFromNative(guiRunQuickLookCloseCallback, record)) {
+            delete record;
+        }
+    }
+}
+
+- (void)dealloc {
+    [self detachCurrentPreview];
+}
+
+- (void)preparePreviewOfFileAtURL:(NSURL*)url completionHandler:(void (^)(NSError* _Nullable))handler {
+    ensureApplication();
+    [self detachCurrentPreview];
+
+    BxGuiEmbeddedHostView* hostView = static_cast<BxGuiEmbeddedHostView*>([self view]);
+    [hostView updateAppearance];
+
+    const char* path = [url isFileURL] ? [[url path] UTF8String] : nullptr;
+    if (!path || !*path || !guiQuickLookPreviewCallback) {
+        if (handler) {
+            handler([NSError errorWithDomain:@"BxGuiQuickLook" code:1 userInfo:nil]);
+        }
+        return;
+    }
+
+    BxGuiWindowHost* guiWindow = guiCreateEmbeddedWindowHost(hostView);
+    self.guiWindow = guiWindow;
+
+    BOOL scoped = [url startAccessingSecurityScopedResource];
+    BxGuiQuickLookCompletion* completion = new BxGuiQuickLookCompletion{
+        [handler copy],
+        scoped ? url : nil
+    };
+
+    void* retainedHost = (__bridge_retained void*)guiWindow;
+    BxGuiQuickLookPreviewRecord* record = new BxGuiQuickLookPreviewRecord(
+        guiQuickLookPreviewCallback,
+        guiQuickLookExtensionContext,
+        retainedHost,
+        std::string(path),
+        completion
+    );
+    if (!brixScheduleMainTaskFromNative(guiRunQuickLookPreviewCallback, record)) {
+        CFRelease(retainedHost);
+        guiFinishQuickLookCompletion(completion, "Preview extension shutting down");
+        delete record;
+    }
+}
+
+@end
+
+extern "C" void
+brixGuiQuickLookExtensionRun(
+    BxGuiQuickLookPreviewCallback previewCallback,
+    BxGuiQuickLookCloseCallback closeCallback,
+    void* context
+) {
+    guiIsExtension = true;
+    void* newRoot = context ? brixAddRoot(static_cast<char*>(context)) : nullptr;
+    void* oldRoot = guiQuickLookExtensionContextRoot;
+    guiQuickLookPreviewCallback = previewCallback;
+    guiQuickLookCloseCallback = closeCallback;
+    guiQuickLookExtensionContext = context;
+    guiQuickLookExtensionContextRoot = newRoot;
+    if (oldRoot) {
+        brixRemoveRoot(oldRoot);
+    }
+
+    if (!brixRunMainTaskQueueHost(guiExtensionRunHost, guiMainQueueWake, nullptr) &&
+        !brixProcessTerminationRequested()) {
+        std::fprintf(stderr, "Quick Look extension must own the active main Brix task queue\n");
+        std::abort();
+    }
+}
+
+extern "C" void
+brixGuiQuickLookExtensionFinish(void* completion, const char* errorMessage) {
+    guiFinishQuickLookCompletion(static_cast<BxGuiQuickLookCompletion*>(completion), errorMessage);
 }

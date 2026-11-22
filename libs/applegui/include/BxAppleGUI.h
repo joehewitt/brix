@@ -463,6 +463,27 @@ extern "C" void brixGuiQuickLookPanelUpdate(void* window, const char* path);
 extern "C" void brixGuiQuickLookPanelClose(void* window);
 extern "C" bool brixGuiQuickLookPanelIsVisible(void);
 
+typedef void (*BxGuiQuickLookPreviewCallback)(
+    void* context,
+    void* hostWindow,
+    const char* path,
+    void* completion
+);
+typedef void (*BxGuiQuickLookCloseCallback)(
+    void* context,
+    void* hostWindow
+);
+
+extern "C" BX_GUI_WITHOUT_BLOCKING void brixGuiQuickLookExtensionRun(
+    BxGuiQuickLookPreviewCallback previewCallback,
+    BxGuiQuickLookCloseCallback closeCallback,
+    void* context
+);
+extern "C" void brixGuiQuickLookExtensionFinish(
+    void* completion,
+    const char* errorMessage
+);
+
 // **********************************************************************************************
 
 extern "C" void* brixGuiTextInputCreate(

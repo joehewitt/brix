@@ -2054,3 +2054,12 @@ extern "C" void brixGuiQuickLookPanelShow(void* window, const char* path) {}
 extern "C" void brixGuiQuickLookPanelUpdate(void* window, const char* path) {}
 extern "C" void brixGuiQuickLookPanelClose(void* window) {}
 extern "C" bool brixGuiQuickLookPanelIsVisible(void) { return false; }
+extern "C" void brixGuiQuickLookExtensionRun(
+    BxGuiQuickLookPreviewCallback previewCallback,
+    BxGuiQuickLookCloseCallback closeCallback,
+    void* context
+) {}
+extern "C" void brixGuiQuickLookExtensionFinish(
+    void* completion,
+    const char* errorMessage
+) {}

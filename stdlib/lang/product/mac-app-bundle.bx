@@ -24,7 +24,9 @@
   (param product AppProduct)
   (param executable Path)
   (param claims-documents Bool)
-  (let bundle (/ (. executable dir) (str (. product name) ".app")))
+  (let extension (. product extension))
+  (let suffix (if-expr extension ".appex" ".app"))
+  (let bundle (/ (. executable dir) (str (. product name) suffix)))
   (throw (call Error (str "-o " executable " is where the app bundle goes; give the executable another name")) (if (== (as bundle String) (as executable String))))
   (blank)
   (let contents (/ bundle "Contents"))
@@ -44,27 +46,37 @@
       (item (as (/ signature "CodeResources") String))
     )
   )
-  (if (. product icon)
+  (if (and (not extension) (. product icon))
     (+= kept (as resources String))
     (+= kept (as icon String))
   )
   (call make-directories macos)
   (call prune bundle kept)
-  (let source (call icon-source (call Path (str executable ".icons")) (. product icon)))
   (let changed false)
-  (if source
-    (call make-directories resources)
-    (= changed (call install-file source icon))
+  (if (not extension)
+    (let source (call icon-source (call Path (str executable ".icons")) (. product icon)))
+    (if source
+      (call make-directories resources)
+      (= changed (call install-file source icon))
+    )
   )
-  (if (call write-if-changed info (call info-plist product claims-documents))
+  (let plist (if-expr extension (call extension-info-plist product extension) (call info-plist product claims-documents)))
+  (if (call write-if-changed info plist)
     (= changed true)
   )
   (if (. inner exists)
     (call (. inner delete))
   )
   (call (. executable clone) inner)
-  (call sign bundle)
-  (if changed
+  (if (and extension (. extension sandbox))
+    (let entitlements (call Path (str executable ".entitlements.plist")))
+    (call write-if-changed entitlements (call sandbox-entitlements-plist))
+    (call sign bundle entitlements)
+    (else
+      (call sign bundle)
+    )
+  )
+  (if (and (not extension) changed)
     (call register bundle)
   )
   (return (call MacAppBundle bundle inner))
@@ -92,15 +104,125 @@
     "    <true/>"
     "    <key>NSPrincipalClass</key>"
     "    <string>NSApplication</string>"
-    "</dict>"
+    (str exported-types imported-types "</dict>")
     "</plist>"
   )
   (where
     (lazy document-types (if-expr (and claims-documents (. product document-types)) (str document-entries "\n") ""))
     (lazy document-entries (call document-types-plist (. product document-types)))
+    (lazy exported-types (if-expr (and claims-documents (. product exported-types)) (str (call type-declarations-plist "UTExportedTypeDeclarations" (. product exported-types)) "\n") ""))
+    (lazy imported-types (if-expr (and claims-documents (. product imported-types)) (str (call type-declarations-plist "UTImportedTypeDeclarations" (. product imported-types)) "\n") ""))
     (lazy icon (if-expr (. product icon) (str (call icon-plist) "\n") ""))
     (lazy version (if-expr (. product version) (str (call version-plist (. product version)) "\n") ""))
     (lazy agent (if-expr (. product shows-in-dock) "" (str (call agent-plist) "\n")))
+  )
+)
+
+(fn-expr _ extension-info-plist _
+  (param product AppProduct)
+  (param extension AppExtension)
+  (paragraph
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"
+    "<plist version=\"1.0\">"
+    "<dict>"
+    "    <key>CFBundleDevelopmentRegion</key>"
+    "    <string>en</string>"
+    "    <key>CFBundleDisplayName</key>"
+    (str "    " (call plist-string (. product name)))
+    "    <key>CFBundleExecutable</key>"
+    (str "    " (call plist-string (. product name)))
+    "    <key>CFBundleIdentifier</key>"
+    (str "    " (call plist-string (. product id)))
+    "    <key>CFBundleInfoDictionaryVersion</key>"
+    "    <string>6.0</string>"
+    "    <key>CFBundleName</key>"
+    (str "    " (call plist-string (. product name)))
+    "    <key>CFBundlePackageType</key>"
+    "    <string>XPC!</string>"
+    (str (call version-plist (?? (. product version) "1.0")))
+    "    <key>NSExtension</key>"
+    "    <dict>"
+    (str attributes "        <key>NSExtensionPointIdentifier</key>")
+    (str "        " (call plist-string (. extension point)))
+    "        <key>NSExtensionPrincipalClass</key>"
+    (str "        " (call plist-string (. extension principal-class)))
+    "    </dict>"
+    "    <key>NSHighResolutionCapable</key>"
+    "    <true/>"
+    (str exported-types imported-types "</dict>")
+    "</plist>"
+  )
+  (where
+    (lazy attributes (if-expr (. extension supported-content-types) (str (call extension-attributes-plist (. extension supported-content-types)) "\n") ""))
+    (lazy exported-types (if-expr (. product exported-types) (str (call type-declarations-plist "UTExportedTypeDeclarations" (. product exported-types)) "\n") ""))
+    (lazy imported-types (if-expr (. product imported-types) (str (call type-declarations-plist "UTImportedTypeDeclarations" (. product imported-types)) "\n") ""))
+  )
+)
+
+(fn-expr _ extension-attributes-plist _
+  (param content-types (list String))
+  (paragraph
+    "        <key>NSExtensionAttributes</key>"
+    "        <dict>"
+    "            <key>QLSupportedContentTypes</key>"
+    "            <array>"
+    (str items)
+    "            </array>"
+    "        </dict>"
+  )
+  (where
+    (lazy items (call (. "\n" join) (in (str "                " (call plist-string each)) content-types)))
+  )
+)
+
+(fn-expr _ type-declarations-plist _
+  (param key String)
+  (param declarations (list AppTypeDeclaration))
+  (paragraph
+    (str "    <key>" key "</key>")
+    "    <array>"
+    (str entries)
+    "    </array>"
+  )
+  (where
+    (lazy entries (call (. "\n" join) (in (call type-declaration-plist each) declarations)))
+  )
+)
+
+(fn-expr _ type-declaration-plist _
+  (param declaration AppTypeDeclaration)
+  (paragraph
+    "        <dict>"
+    (str conforms "            <key>UTTypeDescription</key>")
+    (str "            " (call plist-string (. declaration description)))
+    "            <key>UTTypeIdentifier</key>"
+    (str "            " (call plist-string (. declaration id)))
+    "            <key>UTTypeTagSpecification</key>"
+    "            <dict>"
+    "                <key>public.filename-extension</key>"
+    "                <array>"
+    (str exts)
+    "                </array>"
+    "            </dict>"
+    "        </dict>"
+  )
+  (where
+    (lazy conforms (call plist-key-array "UTTypeConformsTo" (. declaration conforms-to)))
+    (lazy exts (call (. "\n" join) (in (str "                    " (call plist-string each)) (. declaration extensions))))
+  )
+)
+
+(fn-expr _ sandbox-entitlements-plist _
+  (paragraph
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"
+    "<plist version=\"1.0\">"
+    "<dict>"
+    "    <key>com.apple.security.app-sandbox</key>"
+    "    <true/>"
+    "</dict>"
+    "</plist>"
   )
 )
 
