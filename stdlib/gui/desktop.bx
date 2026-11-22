@@ -1,4 +1,6 @@
 (import /BxAppleGUI/BxAppleGUI.h)
+(import /graphics/canvas)
+(import /graphics/image)
 (import /os/path)
 
 (fn-do + move-to-trash _ (?! Error)
@@ -14,4 +16,30 @@
 (fn-do + open-url Bool
   (param url String)
   (return (call C:brixGuiOpenURL url))
+)
+
+(fn-do + open-path Bool
+  (param path Path)
+  (return (call C:brixGuiOpenPath (call native-path (as path String))))
+)
+
+(fn-do + open-path-with Bool
+  (param path Path)
+  (param application Path)
+  (return (call C:brixGuiOpenPathWithApp (call native-path (as path String)) (call native-path (as application String))))
+)
+
+(fn-do + path-display-name String
+  (param path Path)
+  (let name (call C:brixGuiPathDisplayName (call native-path (as path String))))
+  (return (if-expr name (as name String) (. path name)))
+)
+
+(fn-do + load-path-icon (? Image)
+  (param path Path)
+  (param size F64 (= 32))
+  (param scale F64 (= 2))
+  (let raw (call C:brixGuiPathIconCanvas (call native-path (as path String)) size scale))
+  (return-if null (if (== raw (call Pointer))))
+  (return (call Image (call RasterCanvas raw) scale))
 )

@@ -1,0 +1,84 @@
+(import ./app)
+(import /BxAppleGUI/BxAppleGUI.h)
+(import /core/intrinsics)
+(import /ui/input)
+(blank)
+(prop + mac-key-space U32 (= 49))
+(prop + mac-key-backslash U32 (= 42))
+
+(type + HotKey
+  (implements Closable)
+  (event + pressed Bool)
+  (blank)
+  (prop _ native (? Pointer))
+  (prop _ is-double-tap _ (= false))
+  (fn-do + register Bool
+    (param native-key-code U32)
+    (param modifiers PointerModifiers)
+    (call close)
+    (let handle
+      (call C:brixGuiHotKeyRegister
+        (block
+          (arg native-key-code)
+          (arg (call hotkey-modifier-bits modifiers))
+          (arg (as gui-hotkey-native-pressed GuiAppCallback))
+          (arg (as this Pointer))
+        )
+      )
+    )
+    (return-if false (if (== handle (call Pointer))))
+    (blank)
+    (= native handle)
+    (= is-double-tap false)
+    (return true)
+  )
+  (fn-do + register-double-tap Bool
+    (param modifiers PointerModifiers)
+    (call close)
+    (let handle
+      (call C:brixGuiModifierDoubleTapRegister
+        (block
+          (arg (call hotkey-modifier-bits modifiers))
+          (arg (as gui-hotkey-native-pressed GuiAppCallback))
+          (arg (as this Pointer))
+        )
+      )
+    )
+    (return-if false (if (== handle (call Pointer))))
+    (blank)
+    (= native handle)
+    (= is-double-tap true)
+    (return true)
+  )
+  (fn-do + close _
+    (let handle native)
+    (return-if (if (not handle)))
+    (blank)
+    (= native null)
+    (if is-double-tap
+      (call C:brixGuiModifierDoubleTapUnregister handle)
+      (else
+        (call C:brixGuiHotKeyUnregister handle)
+      )
+    )
+  )
+  (fn-do _ fire _
+    (<- pressed true)
+  )
+)
+
+(fn-expr _ hotkey-modifier-bits U64
+  (param modifiers PointerModifiers)
+  (/or/ shift control option command)
+  (where
+    (lazy shift (if-expr (. modifiers shift) 1u64 0u64))
+    (lazy control (if-expr (. modifiers control) 2u64 0u64))
+    (lazy option (if-expr (. modifiers option) 4u64 0u64))
+    (lazy command (if-expr (. modifiers command) 8u64 0u64))
+  )
+)
+
+(fn-do _ gui-hotkey-native-pressed _
+  (param pointer Pointer)
+  (call (. (call (of gc-object-from-pointer HotKey) pointer) fire))
+)

@@ -7,12 +7,14 @@
 #include "BxGraphics/BxGraphics.h"
 
 #import <AppKit/AppKit.h>
+#import <Carbon/Carbon.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreVideo/CoreVideo.h>
 #import <IOSurface/IOSurface.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
+#import <QuickLookUI/QuickLookUI.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <mach/mach_time.h>
 #import <objc/runtime.h>
@@ -1641,6 +1643,36 @@ guiMainQueueRunHost(void*) {
 }
 
 @end
+
+API_AVAILABLE(macos(26.0))
+@interface BxGuiGlassView : NSGlassEffectView
+
+@property(nonatomic) int32_t depth;
+
+@end
+
+@implementation BxGuiGlassView
+
+- (NSView*)hitTest:(NSPoint)point {
+    return nil;
+}
+
+@end
+
+static BOOL
+guiIsMaterialSubview(NSView* subview, int32_t* outDepth) {
+    if ([subview isKindOfClass:[BxGuiMaterialView class]]) {
+        if (outDepth) *outDepth = static_cast<BxGuiMaterialView*>(subview).depth;
+        return YES;
+    }
+    if (@available(macOS 26.0, *)) {
+        if ([subview isKindOfClass:[BxGuiGlassView class]]) {
+            if (outDepth) *outDepth = static_cast<BxGuiGlassView*>(subview).depth;
+            return YES;
+        }
+    }
+    return NO;
+}
 
 static bool
 guiIsTextControl(id object) {
@@ -4288,6 +4320,11 @@ guiPresentCanvas(
         (self.passedKeys & 256)) {
         return YES;
     }
+    if ((commandSelector == @selector(insertTab:) ||
+         commandSelector == @selector(insertBacktab:)) &&
+        (self.passedKeys & 1024)) {
+        return YES;
+    }
     return commandSelector == @selector(cancelOperation:);
 }
 
@@ -4357,6 +4394,11 @@ guiTextControlShouldChange(
     NSRange range,
     NSString* string
 ) {
+    if ((control.inputHost.passedKeys & 512) &&
+        [string isEqualToString:@" "] &&
+        [[NSApp currentEvent] type] == NSEventTypeKeyDown) {
+        return NO;
+    }
     NSUInteger limit = control.inputHost.maxLength;
     if (limit > 0 && string) {
         NSUInteger kept = [[textView string] length] - range.length;
@@ -4707,6 +4749,11 @@ guiTextControlTypingAttributes(
 @interface BxGuiMaterialHost : NSObject
 
 @property(nonatomic, strong) BxGuiMaterialView* view;
+@property(nonatomic, strong) NSView* glassView;
+@property(nonatomic, weak) NSView* container;
+@property(nonatomic, assign) int32_t depth;
+@property(nonatomic, assign) double cornerRadius;
+@property(nonatomic, assign) BOOL usesGlass;
 
 @end
 
@@ -4714,6 +4761,7 @@ guiTextControlTypingAttributes(
 
 - (void)dealloc {
     [self.view removeFromSuperview];
+    [self.glassView removeFromSuperview];
 }
 
 @end
@@ -6112,6 +6160,25 @@ guiAppHasVisibleWindow(void) {
 }
 
 extern "C" void
+brixGuiWindowHide(void* ptr) {
+    BxGuiWindowHost* guiWindow = getWindow(ptr);
+    if (!guiWindow || !guiWindow.window || guiWindow.closed) {
+        return;
+    }
+    [guiWindow cancelRenderFrame];
+    [guiWindow.window orderOut:nil];
+    if (guiWindow.panel && [NSApp isActive] && !guiAppHasVisibleWindow()) {
+        [NSApp deactivate];
+    }
+}
+
+extern "C" bool
+brixGuiWindowIsVisible(void* ptr) {
+    BxGuiWindowHost* guiWindow = getWindow(ptr);
+    return guiWindow && guiWindow.window && !guiWindow.closed && [guiWindow.window isVisible];
+}
+
+extern "C" void
 brixGuiWindowClose(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
     if (!guiWindow || !guiWindow.window || guiWindow.closed) {
@@ -6239,7 +6306,16 @@ brixGuiWindowSetTitle(void* ptr, const char* title) {
 extern "C" void
 brixGuiWindowSetContentSize(void* ptr, double width, double height) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (guiWindow && guiWindow.window && !guiWindow.closed) {
+    if (!guiWindow || !guiWindow.window || guiWindow.closed) {
+        return;
+    }
+    if (guiWindow.panel) {
+        NSRect frame = [guiWindow.window frame];
+        NSRect next = [guiWindow.window frameRectForContentRect:NSMakeRect(0, 0, width, height)];
+        next.origin.x = frame.origin.x;
+        next.origin.y = NSMaxY(frame) - NSHeight(next);
+        [guiWindow.window setFrame:next display:YES];
+    } else {
         [guiWindow.window setContentSize:NSMakeSize(width, height)];
     }
 }
@@ -7938,6 +8014,23 @@ brixGuiMaterialRelease(void* ptr) {
     }
 }
 
+static void
+guiAttachMaterialSubview(NSView* container, NSView* target, int32_t depth) {
+    if (!container || !target) {
+        return;
+    }
+    [target removeFromSuperview];
+    NSView* below = nil;
+    for (NSView* subview in [container subviews]) {
+        int32_t subDepth = 0;
+        if (!guiIsMaterialSubview(subview, &subDepth) || subDepth > depth) {
+            break;
+        }
+        below = subview;
+    }
+    [container addSubview:target positioned:below ? NSWindowAbove : NSWindowBelow relativeTo:below];
+}
+
 extern "C" void
 brixGuiMaterialSetContainer(void* ptr, void* windowPtr, void* boxHostPtr, int32_t depth) {
     BxGuiMaterialHost* host = getMaterial(ptr);
@@ -7952,24 +8045,27 @@ brixGuiMaterialSetContainer(void* ptr, void* windowPtr, void* boxHostPtr, int32_
     if (!container) {
         return;
     }
-    if ([host.view superview] != container || host.view.depth != depth) {
-        [host.view removeFromSuperview];
+    host.container = container;
+    host.depth = depth;
+    NSView* active = (host.usesGlass && host.glassView) ? host.glassView : static_cast<NSView*>(host.view);
+    int32_t activeDepth = 0;
+    guiIsMaterialSubview(active, &activeDepth);
+    if ([active superview] != container || activeDepth != depth) {
         host.view.depth = depth;
-        NSView* below = nil;
-        for (NSView* subview in [container subviews]) {
-            if (![subview isKindOfClass:[BxGuiMaterialView class]] ||
-                    static_cast<BxGuiMaterialView*>(subview).depth > depth) {
-                break;
+        if (@available(macOS 26.0, *)) {
+            if ([host.glassView isKindOfClass:[BxGuiGlassView class]]) {
+                static_cast<BxGuiGlassView*>(host.glassView).depth = depth;
             }
-            below = subview;
         }
-        [container addSubview:host.view positioned:below ? NSWindowAbove : NSWindowBelow relativeTo:below];
+        guiAttachMaterialSubview(container, active, depth);
     }
-    NSVisualEffectState state = [window isKindOfClass:[BxGuiPopupPanel class]]
-        ? NSVisualEffectStateActive
-        : NSVisualEffectStateFollowsWindowActiveState;
-    if ([host.view state] != state) {
-        [host.view setState:state];
+    if (!host.usesGlass) {
+        NSVisualEffectState state = [window isKindOfClass:[BxGuiPopupPanel class]]
+            ? NSVisualEffectStateActive
+            : NSVisualEffectStateFollowsWindowActiveState;
+        if ([host.view state] != state) {
+            [host.view setState:state];
+        }
     }
 }
 
@@ -7988,8 +8084,56 @@ brixGuiMaterialSetFrame(
     if (!host || !host.view) {
         return;
     }
-    NSVisualEffectView* view = host.view;
     NSRect frame = NSMakeRect(x, y, std::max(0.0, width), std::max(0.0, height));
+    if (material == 14 || material == 15) {
+        if (@available(macOS 26.0, *)) {
+            if (!host.glassView) {
+                BxGuiGlassView* glass = [[BxGuiGlassView alloc] initWithFrame:frame];
+                [glass setAccessibilityElement:NO];
+                glass.depth = host.depth;
+                host.glassView = glass;
+            }
+            BxGuiGlassView* glass = static_cast<BxGuiGlassView*>(host.glassView);
+            if (!host.usesGlass) {
+                host.usesGlass = YES;
+                [host.view removeFromSuperview];
+                if (host.container) {
+                    glass.depth = host.depth;
+                    guiAttachMaterialSubview(host.container, glass, host.depth);
+                }
+            }
+            NSGlassEffectViewStyle style = material == 15
+                ? NSGlassEffectViewStyleClear
+                : NSGlassEffectViewStyleRegular;
+            if (glass.style != style) {
+                glass.style = style;
+            }
+            if (glass.cornerRadius != static_cast<CGFloat>(host.cornerRadius)) {
+                glass.cornerRadius = static_cast<CGFloat>(host.cornerRadius);
+            }
+            if (!NSEqualRects([glass frame], frame)) {
+                [glass setFrame:frame];
+                [guiPeerWindowHost(glass) couplePresentation];
+            }
+            if ([glass alphaValue] != static_cast<CGFloat>(opacity)) {
+                [glass setAlphaValue:static_cast<CGFloat>(opacity)];
+            }
+            if ([glass isHidden] == visible) {
+                [glass setHidden:!visible];
+            }
+            return;
+        }
+        material = 8;
+    }
+    if (host.usesGlass) {
+        host.usesGlass = NO;
+        [host.glassView removeFromSuperview];
+        if (host.container) {
+            host.view.depth = host.depth;
+            guiAttachMaterialSubview(host.container, host.view, host.depth);
+        }
+    }
+    NSVisualEffectView* view = host.view;
     if (!NSEqualRects([view frame], frame)) {
         [view setFrame:frame];
         [guiPeerWindowHost(view) couplePresentation];
@@ -8003,6 +8147,20 @@ brixGuiMaterialSetFrame(
     }
     if ([view isHidden] == visible) {
         [view setHidden:!visible];
+    }
+}
+
+extern "C" void
+brixGuiMaterialSetCornerRadius(void* ptr, double radius) {
+    BxGuiMaterialHost* host = getMaterial(ptr);
+    if (!host) {
+        return;
+    }
+    host.cornerRadius = std::max(0.0, radius);
+    if (@available(macOS 26.0, *)) {
+        if ([host.glassView isKindOfClass:[BxGuiGlassView class]]) {
+            static_cast<BxGuiGlassView*>(host.glassView).cornerRadius = static_cast<CGFloat>(host.cornerRadius);
+        }
     }
 }
 
@@ -8328,6 +8486,27 @@ brixGuiWindowGetScreenBound(void* ptr, uint32_t component) {
     }
 }
 
+extern "C" double
+brixGuiMouseScreenBound(uint32_t component) {
+    @autoreleasepool {
+        NSPoint location = [NSEvent mouseLocation];
+        NSScreen* screen = nil;
+        for (NSScreen* candidate in [NSScreen screens]) {
+            if (NSMouseInRect(location, [candidate frame], NO)) {
+                screen = candidate;
+                break;
+            }
+        }
+        if (!screen) {
+            screen = [NSScreen mainScreen];
+        }
+        if (!screen) {
+            return 0;
+        }
+        return guiScreenRectComponent([screen visibleFrame], component);
+    }
+}
+
 // **********************************************************************************************
 
 static NSPasteboard*
@@ -8630,6 +8809,420 @@ brixGuiOpenURL(const char* url) {
             return false;
         }
         return [[NSWorkspace sharedWorkspace] openURL:value];
+    }
+}
+
+extern "C" bool
+brixGuiOpenPath(const char* path) {
+    if (!path || !path[0]) {
+        return false;
+    }
+
+    @autoreleasepool {
+        NSURL* url = [NSURL fileURLWithPath:stringFromUTF8(path)];
+        if (![url checkResourceIsReachableAndReturnError:nil]) {
+            return false;
+        }
+        return [[NSWorkspace sharedWorkspace] openURL:url];
+    }
+}
+
+extern "C" bool
+brixGuiOpenPathWithApp(const char* path, const char* appPath) {
+    if (!path || !path[0] || !appPath || !appPath[0]) {
+        return false;
+    }
+
+    @autoreleasepool {
+        NSURL* fileURL = [NSURL fileURLWithPath:stringFromUTF8(path)];
+        NSURL* appURL = [NSURL fileURLWithPath:stringFromUTF8(appPath)];
+        if (![fileURL checkResourceIsReachableAndReturnError:nil] ||
+            ![appURL checkResourceIsReachableAndReturnError:nil]) {
+            return false;
+        }
+        NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
+        [[NSWorkspace sharedWorkspace] openURLs:@[fileURL]
+                           withApplicationAtURL:appURL
+                                  configuration:config
+                              completionHandler:nil];
+        return true;
+    }
+}
+
+extern "C" const char*
+brixGuiPathDisplayName(const char* path) {
+    thread_local std::string buffer;
+    buffer.clear();
+    if (!path || !path[0]) {
+        return buffer.c_str();
+    }
+
+    @autoreleasepool {
+        NSString* name = [[NSFileManager defaultManager] displayNameAtPath:stringFromUTF8(path)];
+        if (name) {
+            const char* utf8 = [name UTF8String];
+            if (utf8) {
+                buffer.assign(utf8);
+            }
+        }
+    }
+    return buffer.c_str();
+}
+
+extern "C" void*
+brixGuiPathIconCanvas(const char* path, double size, double scale) {
+    if (!path || !path[0] || !std::isfinite(size) || size <= 0 || !std::isfinite(scale) || scale <= 0) {
+        return nullptr;
+    }
+
+    @autoreleasepool {
+        NSString* filePath = stringFromUTF8(path);
+        NSImage* icon = [[NSWorkspace sharedWorkspace] iconForFile:filePath];
+        if (!icon) {
+            return nullptr;
+        }
+        void* canvas = brixGraphicsCanvasCreateScaled(size, size, scale);
+        if (!canvas) {
+            return nullptr;
+        }
+        void* pixels = brixGraphicsCanvasGetPixelData(canvas);
+        int32_t pixelWidth = brixGraphicsCanvasGetPixelWidth(canvas);
+        int32_t pixelHeight = brixGraphicsCanvasGetPixelHeight(canvas);
+        uint64_t bytesPerRow = brixGraphicsCanvasGetBytesPerRow(canvas);
+        CGColorSpaceRef colorSpace = static_cast<CGColorSpaceRef>(brixGraphicsCanvasGetColorSpace(canvas));
+        if (!pixels || pixelWidth <= 0 || pixelHeight <= 0 || !colorSpace) {
+            brixGraphicsCanvasRelease(canvas);
+            return nullptr;
+        }
+        CGContextRef context = CGBitmapContextCreate(
+            pixels,
+            static_cast<size_t>(pixelWidth),
+            static_cast<size_t>(pixelHeight),
+            8,
+            static_cast<size_t>(bytesPerRow),
+            colorSpace,
+            kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little
+        );
+        if (!context) {
+            brixGraphicsCanvasRelease(canvas);
+            return nullptr;
+        }
+        CGContextClearRect(context, CGRectMake(0, 0, pixelWidth, pixelHeight));
+        [NSGraphicsContext saveGraphicsState];
+        NSGraphicsContext* nsContext = [NSGraphicsContext graphicsContextWithCGContext:context flipped:NO];
+        [NSGraphicsContext setCurrentContext:nsContext];
+        [icon drawInRect:NSMakeRect(0, 0, pixelWidth, pixelHeight)
+                fromRect:NSZeroRect
+               operation:NSCompositingOperationCopy
+                fraction:1.0];
+        [nsContext flushGraphics];
+        [NSGraphicsContext restoreGraphicsState];
+        CGContextRelease(context);
+        brixGraphicsCanvasPixelsChanged(canvas);
+        return canvas;
+    }
+}
+
+struct BxGuiHotKeyEntry {
+    uint32_t id = 0;
+    EventHotKeyRef ref = nullptr;
+    BxGuiActionCallback callback = nullptr;
+    void* context = nullptr;
+    void* contextRoot = nullptr;
+};
+
+static std::unordered_map<uint32_t, BxGuiHotKeyEntry*> guiHotKeys;
+static uint32_t guiNextHotKeyId = 1;
+static EventHandlerRef guiHotKeyEventHandler = nullptr;
+
+static OSStatus
+guiHotKeyHandler(EventHandlerCallRef nextHandler, EventRef event, void* userData) {
+    EventHotKeyID hotKeyID;
+    OSStatus status = GetEventParameter(
+        event,
+        kEventParamDirectObject,
+        typeEventHotKeyID,
+        nullptr,
+        sizeof(hotKeyID),
+        nullptr,
+        &hotKeyID
+    );
+    if (status != noErr || hotKeyID.signature != 'BXHK') {
+        return eventNotHandledErr;
+    }
+    auto found = guiHotKeys.find(hotKeyID.id);
+    if (found == guiHotKeys.end() || !found->second || !found->second->callback) {
+        return eventNotHandledErr;
+    }
+    guiScheduleActionCallback(found->second->callback, found->second->context, 0);
+    return noErr;
+}
+
+static uint32_t
+guiCarbonModifiers(uint64_t modifiers) {
+    uint32_t carbon = 0;
+    if (modifiers & 1) carbon |= shiftKey;
+    if (modifiers & 2) carbon |= controlKey;
+    if (modifiers & 4) carbon |= optionKey;
+    if (modifiers & 8) carbon |= cmdKey;
+    return carbon;
+}
+
+extern "C" void*
+brixGuiHotKeyRegister(
+    uint32_t nativeKeyCode,
+    uint64_t modifiers,
+    BxGuiActionCallback callback,
+    void* context
+) {
+    if (!callback) {
+        return nullptr;
+    }
+    if (!guiHotKeyEventHandler) {
+        EventTypeSpec spec;
+        spec.eventClass = kEventClassKeyboard;
+        spec.eventKind = kEventHotKeyPressed;
+        InstallApplicationEventHandler(
+            NewEventHandlerUPP(guiHotKeyHandler),
+            1,
+            &spec,
+            nullptr,
+            &guiHotKeyEventHandler
+        );
+    }
+    uint32_t id = guiNextHotKeyId++;
+    EventHotKeyID hotKeyID;
+    hotKeyID.signature = 'BXHK';
+    hotKeyID.id = id;
+    EventHotKeyRef ref = nullptr;
+    OSStatus status = RegisterEventHotKey(
+        nativeKeyCode,
+        guiCarbonModifiers(modifiers),
+        hotKeyID,
+        GetApplicationEventTarget(),
+        0,
+        &ref
+    );
+    if (status != noErr || !ref) {
+        return nullptr;
+    }
+    BxGuiHotKeyEntry* entry = new BxGuiHotKeyEntry();
+    entry->id = id;
+    entry->ref = ref;
+    entry->callback = callback;
+    entry->context = context;
+    entry->contextRoot = context ? brixAddRoot(static_cast<char*>(context)) : nullptr;
+    guiHotKeys[id] = entry;
+    return entry;
+}
+
+extern "C" void
+brixGuiHotKeyUnregister(void* ptr) {
+    if (!ptr) {
+        return;
+    }
+    BxGuiHotKeyEntry* entry = static_cast<BxGuiHotKeyEntry*>(ptr);
+    guiHotKeys.erase(entry->id);
+    if (entry->ref) {
+        UnregisterEventHotKey(entry->ref);
+        entry->ref = nullptr;
+    }
+    if (entry->contextRoot) {
+        brixRemoveRoot(entry->contextRoot);
+        entry->contextRoot = nullptr;
+    }
+    delete entry;
+}
+
+@interface BxGuiDoubleTapMonitor : NSObject
+
+@property(nonatomic, assign) uint64_t targetModifiers;
+@property(nonatomic, assign) BxGuiActionCallback callback;
+@property(nonatomic, assign) void* context;
+@property(nonatomic, assign) void* contextRoot;
+@property(nonatomic, strong) id globalFlagsMonitor;
+@property(nonatomic, strong) id localFlagsMonitor;
+@property(nonatomic, strong) id globalKeyMonitor;
+@property(nonatomic, strong) id localKeyMonitor;
+@property(nonatomic, assign) BOOL pressedCleanly;
+@property(nonatomic, assign) uint64_t lastReleaseNanoseconds;
+
+@end
+
+@implementation BxGuiDoubleTapMonitor
+
+- (void)handleFlags:(NSEvent*)event {
+    uint64_t mods = guiModifierBits([event modifierFlags]) & 15;
+    if (mods == self.targetModifiers) {
+        self.pressedCleanly = YES;
+        return;
+    }
+    if (mods == 0 && self.pressedCleanly) {
+        self.pressedCleanly = NO;
+        uint64_t now = brixMonotonicTimeNanoseconds();
+        if (self.lastReleaseNanoseconds > 0 && now - self.lastReleaseNanoseconds <= 350000000ull) {
+            self.lastReleaseNanoseconds = 0;
+            if (self.callback) {
+                guiScheduleActionCallback(self.callback, self.context, 0);
+            }
+        } else {
+            self.lastReleaseNanoseconds = now;
+        }
+        return;
+    }
+    self.pressedCleanly = NO;
+    self.lastReleaseNanoseconds = 0;
+}
+
+- (void)cancelSequence {
+    self.pressedCleanly = NO;
+    self.lastReleaseNanoseconds = 0;
+}
+
+- (void)stop {
+    if (self.globalFlagsMonitor) {
+        [NSEvent removeMonitor:self.globalFlagsMonitor];
+        self.globalFlagsMonitor = nil;
+    }
+    if (self.localFlagsMonitor) {
+        [NSEvent removeMonitor:self.localFlagsMonitor];
+        self.localFlagsMonitor = nil;
+    }
+    if (self.globalKeyMonitor) {
+        [NSEvent removeMonitor:self.globalKeyMonitor];
+        self.globalKeyMonitor = nil;
+    }
+    if (self.localKeyMonitor) {
+        [NSEvent removeMonitor:self.localKeyMonitor];
+        self.localKeyMonitor = nil;
+    }
+    self.callback = nullptr;
+    self.context = nullptr;
+    if (self.contextRoot) {
+        brixRemoveRoot(self.contextRoot);
+        self.contextRoot = nullptr;
+    }
+}
+
+- (void)dealloc {
+    [self stop];
+}
+
+@end
+
+extern "C" void*
+brixGuiModifierDoubleTapRegister(
+    uint64_t modifiers,
+    BxGuiActionCallback callback,
+    void* context
+) {
+    if (!callback || !(modifiers & 15)) {
+        return nullptr;
+    }
+    BxGuiDoubleTapMonitor* monitor = [[BxGuiDoubleTapMonitor alloc] init];
+    monitor.targetModifiers = modifiers & 15;
+    monitor.callback = callback;
+    monitor.context = context;
+    monitor.contextRoot = context ? brixAddRoot(static_cast<char*>(context)) : nullptr;
+    __weak BxGuiDoubleTapMonitor* weakMonitor = monitor;
+    monitor.globalFlagsMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+                                                                        handler:^(NSEvent* event) {
+        [weakMonitor handleFlags:event];
+    }];
+    monitor.localFlagsMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged
+                                                                      handler:^NSEvent*(NSEvent* event) {
+        [weakMonitor handleFlags:event];
+        return event;
+    }];
+    monitor.globalKeyMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                                                      handler:^(NSEvent* event) {
+        [weakMonitor cancelSequence];
+    }];
+    monitor.localKeyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                                                    handler:^NSEvent*(NSEvent* event) {
+        [weakMonitor cancelSequence];
+        return event;
+    }];
+    return (__bridge_retained void*)monitor;
+}
+
+extern "C" void
+brixGuiModifierDoubleTapUnregister(void* ptr) {
+    if (!ptr) {
+        return;
+    }
+    BxGuiDoubleTapMonitor* monitor = (__bridge_transfer BxGuiDoubleTapMonitor*)ptr;
+    [monitor stop];
+}
+
+@interface BxGuiQuickLookHost : NSObject
+
+@property(nonatomic, strong) QLPreviewView* control;
+
+@end
+
+@implementation BxGuiQuickLookHost
+
+- (void)dealloc {
+    if (self.control) {
+        [self.control close];
+        [self.control removeFromSuperview];
+        self.control = nil;
+    }
+}
+
+@end
+
+extern "C" void*
+brixGuiQuickLookCreate(void* windowPtr) {
+    BxGuiWindowHost* guiWindow = getWindow(windowPtr);
+    if (!guiWindow || !guiWindow.window || guiWindow.closed) {
+        return nullptr;
+    }
+    QLPreviewView* view = [[QLPreviewView alloc] initWithFrame:NSZeroRect style:QLPreviewViewStyleNormal];
+    view.autostarts = YES;
+    view.shouldCloseWithWindow = NO;
+    BxGuiQuickLookHost* host = [[BxGuiQuickLookHost alloc] init];
+    host.control = view;
+    void* retained = (__bridge_retained void*)host;
+    brixGuiWindowAddPeer(windowPtr, retained, false, true);
+    return retained;
+}
+
+extern "C" void
+brixGuiQuickLookRelease(void* ptr) {
+    if (!ptr) {
+        return;
+    }
+    brixGuiPeerDetach(ptr);
+    BxGuiQuickLookHost* host = (__bridge BxGuiQuickLookHost*)ptr;
+    if (host.control) {
+        host.control.previewItem = nil;
+        [host.control close];
+    }
+    CFAutorelease(ptr);
+}
+
+extern "C" void
+brixGuiQuickLookSetPath(void* ptr, const char* path) {
+    if (!ptr) {
+        return;
+    }
+    BxGuiQuickLookHost* host = (__bridge BxGuiQuickLookHost*)ptr;
+    if (!host.control) {
+        return;
+    }
+    if (!path || !path[0]) {
+        host.control.previewItem = nil;
+        return;
+    }
+    @autoreleasepool {
+        NSURL* url = [NSURL fileURLWithPath:stringFromUTF8(path)];
+        if ([url checkResourceIsReachableAndReturnError:nil]) {
+            host.control.previewItem = url;
+        } else {
+            host.control.previewItem = nil;
+        }
     }
 }
 

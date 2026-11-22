@@ -104,6 +104,8 @@
   (prop + previous-window (? Window))
   (prop + next-window (? Window))
   (prop + is-active _ (= false))
+  (prop + is-visible _ (= false))
+  (prop + starts-hidden _ (= false))
   (prop + has-opened _ (= false))
   (prop + focused-box (? Box))
   (prop + remembered-focus-box (? Box))
@@ -683,13 +685,38 @@
     (call (?. app ensure-accents))
     (call render-opening-frame)
     (call settle-opening-frame)
-    (if native
+    (if (and native (not starts-hidden))
       (call C:brixGuiWindowShow native)
+      (= is-visible true)
     )
     (= has-opened true)
   )
+  (fn-do + show _
+    (if is-closed
+      (call open)
+      (return)
+    )
+    (let handle native)
+    (return-if (if (not handle)))
+    (blank)
+    (= is-visible true)
+    (call schedule-render)
+    (call C:brixGuiWindowShow handle)
+    (if focused-box
+      (let ignored (call request-native-focus focused-box))
+    )
+  )
+  (fn-do + hide _
+    (let handle native)
+    (return-if (if (or (not handle) is-closed)))
+    (blank)
+    (= is-visible false)
+    (= is-active false)
+    (call C:brixGuiWindowHide handle)
+  )
   (fn-do + bring-to-front _
     (if (and native (not is-closed))
+      (= is-visible true)
       (call C:brixGuiWindowShow native)
     )
   )
@@ -1991,6 +2018,7 @@
   )
   (fn-do _ finish-close _
     (= is-closed true)
+    (= is-visible false)
     (= is-active false)
     (call (. window-clock finish-all))
     (call finish-drag false)
@@ -4320,6 +4348,17 @@
     )
   )
   (pipe |> List)
+)
+
+(fn-expr + gui-active-screen-bounds Rect
+  (call Rect
+    (block
+      (arg (call C:brixGuiMouseScreenBound 0))
+      (arg (call C:brixGuiMouseScreenBound 1))
+      (arg (call C:brixGuiMouseScreenBound 2))
+      (arg (call C:brixGuiMouseScreenBound 3))
+    )
+  )
 )
 
 (fn-expr _ window-stoplight-room Length

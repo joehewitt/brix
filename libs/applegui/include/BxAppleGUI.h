@@ -135,6 +135,8 @@ extern "C" void* brixGuiWindowCreate(const char* title, double width, double hei
 extern "C" void brixGuiWindowRelease(void* window);
 extern "C" void* brixGuiWindowGetNativeWindow(void* window);
 extern "C" void brixGuiWindowShow(void* window);
+extern "C" void brixGuiWindowHide(void* window);
+extern "C" bool brixGuiWindowIsVisible(void* window);
 extern "C" void brixGuiWindowClose(void* window);
 extern "C" void brixGuiWindowRejectDeferredClose(void* window);
 extern "C" void brixGuiWindowSetTitle(void* window, const char* title);
@@ -309,6 +311,7 @@ extern "C" void brixGuiMaterialSetFrame(
     bool visible
 );
 extern "C" void brixGuiMaterialSetMask(void* material, void* canvas, double width, double height, double cap);
+extern "C" void brixGuiMaterialSetCornerRadius(void* material, double radius);
 extern "C" void* brixGuiBoxHostCreate(void* window);
 extern "C" void brixGuiBoxHostRelease(void* host);
 extern "C" void brixGuiBoxHostSetParent(void* host, void* parentHost);
@@ -396,6 +399,7 @@ extern "C" void brixGuiPopupSetConstrained(void* popup, bool constrained);
 extern "C" void brixGuiPopupCommitFrame(void* popup, void* canvas);
 extern "C" double brixGuiPopupGetScreenBound(void* popup, uint32_t component);
 extern "C" double brixGuiWindowGetScreenBound(void* window, uint32_t component);
+extern "C" double brixGuiMouseScreenBound(uint32_t component);
 
 // **********************************************************************************************
 
@@ -430,6 +434,28 @@ extern "C" const char* brixGuiTypeOfPath(const char* path);
 extern "C" bool brixGuiTrashPath(const char* path);
 extern "C" bool brixGuiRevealPath(const char* path);
 extern "C" bool brixGuiOpenURL(const char* url);
+extern "C" bool brixGuiOpenPath(const char* path);
+extern "C" bool brixGuiOpenPathWithApp(const char* path, const char* appPath);
+extern "C" const char* brixGuiPathDisplayName(const char* path);
+extern "C" void* brixGuiPathIconCanvas(const char* path, double size, double scale);
+
+extern "C" void* brixGuiHotKeyRegister(
+    uint32_t nativeKeyCode,
+    uint64_t modifiers,
+    BxGuiActionCallback callback,
+    void* context
+);
+extern "C" void brixGuiHotKeyUnregister(void* hotKey);
+extern "C" void* brixGuiModifierDoubleTapRegister(
+    uint64_t modifiers,
+    BxGuiActionCallback callback,
+    void* context
+);
+extern "C" void brixGuiModifierDoubleTapUnregister(void* monitor);
+
+extern "C" void* brixGuiQuickLookCreate(void* window);
+extern "C" void brixGuiQuickLookRelease(void* quickLook);
+extern "C" void brixGuiQuickLookSetPath(void* quickLook, const char* path);
 
 // **********************************************************************************************
 

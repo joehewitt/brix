@@ -2021,3 +2021,28 @@ extern "C" void brixGuiCursorRelease(void* cursor) {}
 extern "C" double brixGuiCursorWidth(void* cursor) { return 0; }
 extern "C" double brixGuiCursorHotspotX(void* cursor) { return 0; }
 extern "C" double brixGuiCursorHotspotY(void* cursor) { return 0; }
+
+extern "C" void brixGuiWindowHide(void* window) {}
+extern "C" bool brixGuiWindowIsVisible(void* window) { return false; }
+extern "C" double brixGuiMouseScreenBound(uint32_t component) { return 0; }
+extern "C" void brixGuiMaterialSetCornerRadius(void* material, double radius) {}
+extern "C" bool brixGuiOpenPath(const char* path) { return false; }
+extern "C" bool brixGuiOpenPathWithApp(const char* path, const char* appPath) { return false; }
+extern "C" const char* brixGuiPathDisplayName(const char* path) { return ""; }
+extern "C" void* brixGuiPathIconCanvas(const char* path, double size, double scale) { return nullptr; }
+extern "C" void* brixGuiHotKeyRegister(
+    uint32_t nativeKeyCode,
+    uint64_t modifiers,
+    BxGuiActionCallback callback,
+    void* context
+) { return nullptr; }
+extern "C" void brixGuiHotKeyUnregister(void* hotKey) {}
+extern "C" void* brixGuiModifierDoubleTapRegister(
+    uint64_t modifiers,
+    BxGuiActionCallback callback,
+    void* context
+) { return nullptr; }
+extern "C" void brixGuiModifierDoubleTapUnregister(void* monitor) {}
+extern "C" void* brixGuiQuickLookCreate(void* window) { return nullptr; }
+extern "C" void brixGuiQuickLookRelease(void* quickLook) {}
+extern "C" void brixGuiQuickLookSetPath(void* quickLook, const char* path) {}
