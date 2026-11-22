@@ -1095,6 +1095,12 @@ static uint32_t
 guiReceiveContentSizeNotification(
     BxGuiWindowHost* guiWindow, uint64_t deadlineNanoseconds = 0) {
     if (guiWindow.contentSizeCallback && !guiWindow.closed && guiWindow.contentView) {
+        @synchronized(guiWindow) {
+            uint64_t now = brixMonotonicTimeNanoseconds();
+            if (now > guiWindow.lastFrameTargetTimeNanoseconds) {
+                guiWindow.lastFrameTargetTimeNanoseconds = now;
+            }
+        }
         return guiScheduleLatestSizeCallback(
             guiWindow,
             guiWindow.contentSizeCallback,
@@ -3336,6 +3342,10 @@ guiPresentCanvas(
         self.renderCallback = nullptr;
         self.renderContext = nullptr;
         self.renderContextRoot = nullptr;
+        uint64_t now = brixMonotonicTimeNanoseconds();
+        if (now > self.lastFrameTargetTimeNanoseconds) {
+            self.lastFrameTargetTimeNanoseconds = now;
+        }
     }
 
     guiFrameSchedulerCancel(self);
