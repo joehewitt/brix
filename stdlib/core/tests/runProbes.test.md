@@ -197,6 +197,20 @@ noisy
 99
 ```
 
+### A statement under a key compiles wherever a counter of that key does, so the counter can read what it sets.
+
+```brix probes=profile:demo
+(main
+  (probe demo.start (let start 5))
+  (probe-count demo.start (- 7 start))
+  (print "counted")
+)
+```
+
+```output
+counted
+```
+
 ```brix probes=snapshot.array
 (main
   (let values ([] U8 3))
