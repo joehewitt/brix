@@ -794,6 +794,12 @@ struct BxGuiCanvasPresenter {
 
 static const size_t bxGuiPresentSurfaceLimit = 3;
 
+struct BxGuiCommandShortcut {
+    uint32_t key;
+    std::string characters;
+    uint64_t modifiers;
+};
+
 @interface BxGuiWindowHost : NSObject <NSWindowDelegate, NSDraggingSource> {
 @public
     BxGuiCanvasPresenter canvasPresenter;
@@ -806,6 +812,7 @@ static const size_t bxGuiPresentSurfaceLimit = 3;
     bool redoAvailable;
     std::string undoTitle;
     std::string redoTitle;
+    std::vector<BxGuiCommandShortcut> commandShortcuts;
 }
 
 @property(nonatomic, strong) NSWindow* window;
@@ -896,6 +903,7 @@ static const size_t bxGuiPresentSurfaceLimit = 3;
 - (BOOL)performDrop:(id<NSDraggingInfo>)info windowPoint:(NSPoint)windowPoint;
 - (void)handleWindowEvent:(NSEvent*)event;
 - (BOOL)handleKeyEvent:(NSEvent*)event;
+- (BOOL)matchesCommandShortcut:(NSEvent*)event;
 - (void)handleKeyReleaseEvent:(NSEvent*)event;
 - (void)dispatchPeerKeyEvent:(NSEvent*)event;
 - (void)dispatchPeerFocusExit:(BOOL)backward;
@@ -2443,7 +2451,10 @@ guiResponderEditsTextInput(NSResponder* responder) {
     if (guiIsHelpMenuKey(event) && [self.guiWindow handleKeyEvent:event]) {
         return YES;
     }
-    return [super performKeyEquivalent:event];
+    if ([super performKeyEquivalent:event]) {
+        return YES;
+    }
+    return [self.guiWindow matchesCommandShortcut:event];
 }
 
 - (void)brixZoomIn:(id)sender {
@@ -3703,6 +3714,34 @@ guiPresentCanvas(
         static_cast<bool>(isRepeat),
         self.eventText
     );
+}
+
+- (BOOL)matchesCommandShortcut:(NSEvent*)event {
+    if ([event type] != NSEventTypeKeyDown || self.closed || commandShortcuts.empty()) {
+        return NO;
+    }
+    uint64_t modifiers = guiModifierBits([event modifierFlags]) & 15;
+    if (!(modifiers & 8)) {
+        return NO;
+    }
+    uint32_t key = guiLogicalKeyKind([event keyCode]);
+    NSString* rawChars = [[event charactersIgnoringModifiers] lowercaseString] ?: @"";
+    const char* utf8Chars = [rawChars UTF8String] ?: "";
+    for (const BxGuiCommandShortcut& shortcut : commandShortcuts) {
+        uint64_t expectedMods = shortcut.modifiers & 15;
+        if (shortcut.key != 0) {
+            if (key == shortcut.key && modifiers == expectedMods) {
+                return YES;
+            }
+        } else if (!shortcut.characters.empty()) {
+            bool shiftMatches = !(expectedMods & 1) || (modifiers & 1);
+            bool otherMatches = (modifiers & 14) == (expectedMods & 14);
+            if (shiftMatches && otherMatches && shortcut.characters == utf8Chars) {
+                return YES;
+            }
+        }
+    }
+    return NO;
 }
 
 - (BOOL)handleKeyEvent:(NSEvent*)event {
@@ -5105,7 +5144,10 @@ guiTextControlPerformKeyEquivalent(NSTextField* control, NSEvent* event) {
     if (guiIsHelpMenuKey(event) && [self.ownerHost handleKeyEvent:event]) {
         return YES;
     }
-    return [super performKeyEquivalent:event];
+    if ([super performKeyEquivalent:event]) {
+        return YES;
+    }
+    return [self.ownerHost matchesCommandShortcut:event];
 }
 
 - (void)sendEvent:(NSEvent*)event {
@@ -7248,6 +7290,28 @@ brixGuiWindowSetUndoState(void* ptr, bool canUndo, const char* undoTitle, bool c
     guiWindow->redoAvailable = canRedo;
     guiWindow->undoTitle = undoTitle ? undoTitle : "";
     guiWindow->redoTitle = redoTitle ? redoTitle : "";
+}
+
+extern "C" void
+brixGuiWindowClearCommandShortcuts(void* ptr) {
+    BxGuiWindowHost* guiWindow = getWindow(ptr);
+    if (!guiWindow || guiWindow.closed) {
+        return;
+    }
+    guiWindow->commandShortcuts.clear();
+}
+
+extern "C" void
+brixGuiWindowAddCommandShortcut(void* ptr, uint32_t key, const char* characters, uint64_t modifiers) {
+    BxGuiWindowHost* guiWindow = getWindow(ptr);
+    if (!guiWindow || guiWindow.closed) {
+        return;
+    }
+    NSString* lowered = characters && characters[0]
+        ? [[NSString stringWithUTF8String:characters] lowercaseString]
+        : @"";
+    const char* utf8 = [lowered UTF8String] ?: "";
+    guiWindow->commandShortcuts.push_back({key, std::string(utf8), modifiers & 15});
 }
 
 extern "C" void

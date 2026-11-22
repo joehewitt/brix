@@ -1566,6 +1566,8 @@ brixGuiWindowSetEventCallback(void* ptr, BxGuiWindowEventCallback callback, void
 extern "C" void brixGuiWindowSetTextActionCallback(void* window, BxGuiWindowTextActionCallback callback, void* context) {}
 extern "C" void brixGuiWindowSetTextInputActive(void* window, bool active) {}
 extern "C" void brixGuiWindowSetUndoState(void* window, bool canUndo, const char* undoTitle, bool canRedo, const char* redoTitle) {}
+extern "C" void brixGuiWindowClearCommandShortcuts(void* window) {}
+extern "C" void brixGuiWindowAddCommandShortcut(void* window, uint32_t key, const char* characters, uint64_t modifiers) {}
 extern "C" void brixGuiWindowSetTextInputContext(
     void* window,
     const char* before,
