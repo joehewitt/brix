@@ -1375,9 +1375,14 @@ extern "C" void brixGuiMenuPerformRole(uint32_t role) {}
 extern "C" void* brixGuiStatusItemCreate(void) { return nullptr; }
 extern "C" void brixGuiStatusItemRelease(void* item) {}
 extern "C" void brixGuiStatusItemSetTitle(void* item, const char* title) {}
+extern "C" void brixGuiStatusItemSetImage(void* item, void* canvas, double width, double height, bool isTemplate) {}
 extern "C" void brixGuiStatusItemSetMenu(void* item, void* menu) {}
+extern "C" void brixGuiStatusItemSetContextMenu(void* item, void* menu) {}
 extern "C" void brixGuiStatusItemSetCallback(void* item, BxGuiStatusItemCallback callback, void* context) {}
 extern "C" void brixGuiStatusItemSetPanel(void* item, void* window) {}
+extern "C" void* brixGuiStatusItemCreatePopover(void* item, double width, double height) { return nullptr; }
+extern "C" void brixGuiStatusItemShowPopover(void* item) {}
+extern "C" void brixGuiStatusItemClosePopover(void* item) {}
 extern "C" double brixGuiStatusItemGetBound(void* item, uint32_t component) { return 0; }
 extern "C" double brixGuiStatusItemGetScreenBound(void* item, uint32_t component) { return 0; }
 

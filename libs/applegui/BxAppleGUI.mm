@@ -811,6 +811,7 @@ static const size_t bxGuiPresentSurfaceLimit = 3;
 @property(nonatomic, strong) NSWindow* window;
 @property(nonatomic, assign) BOOL embedded;
 @property(nonatomic, weak) NSView* hostView;
+@property(nonatomic, weak) NSPopover* popover;
 @property(nonatomic, strong) BxGuiStoplightView* stoplightView;
 @property(nonatomic, assign) BOOL titlebarVisible;
 @property(nonatomic, assign) BOOL panel;
@@ -2236,11 +2237,13 @@ guiResponderEditsTextInput(NSResponder* responder) {
 
 - (void)keyDown:(NSEvent*)event {
     if (self.inputHost.embedded) {
-        unsigned short keyCode = [event keyCode];
-        NSEventModifierFlags flags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
-        if ((keyCode == 49 && flags == 0) || keyCode == 53) {
-            [super keyDown:event];
-            return;
+        if (guiIsExtension) {
+            unsigned short keyCode = [event keyCode];
+            NSEventModifierFlags flags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
+            if ((keyCode == 49 && flags == 0) || keyCode == 53) {
+                [super keyDown:event];
+                return;
+            }
         }
         if ([self.inputHost handleKeyEvent:event]) {
             return;
@@ -5964,12 +5967,61 @@ brixGuiStatusItemRelease(void* ptr) {
     guiStatusItemCount -= 1;
 }
 
+static BOOL guiAppHasVisibleWindow(void);
+static BxGuiEmbeddedHostView* guiCreateEmbeddedHostView(NSSize size);
+static BxGuiWindowHost* guiCreateEmbeddedWindowHost(BxGuiEmbeddedHostView* hostView);
+
+static void
+guiStatusItemSyncImagePosition(NSStatusBarButton* button) {
+    if (!button) {
+        return;
+    }
+    BOOL hasImage = [button image] != nil;
+    BOOL hasTitle = [[button title] length] > 0;
+    if (hasImage && !hasTitle) {
+        [button setImagePosition:NSImageOnly];
+    } else if (hasImage) {
+        [button setImagePosition:NSImageLeading];
+    } else {
+        [button setImagePosition:NSNoImage];
+    }
+}
+
 extern "C" void
 brixGuiStatusItemSetTitle(void* ptr, const char* title) {
     NSStatusItem* item = (__bridge NSStatusItem*)ptr;
     if (item) {
-        [[item button] setTitle:stringFromUTF8(title)];
+        NSStatusBarButton* button = [item button];
+        [button setTitle:stringFromUTF8(title)];
+        guiStatusItemSyncImagePosition(button);
     }
+}
+
+extern "C" void
+brixGuiStatusItemSetImage(void* ptr, void* canvas, double width, double height, bool isTemplate) {
+    NSStatusItem* item = (__bridge NSStatusItem*)ptr;
+    if (!item) {
+        return;
+    }
+    NSStatusBarButton* button = [item button];
+    if (!canvas) {
+        [button setImage:nil];
+        guiStatusItemSyncImagePosition(button);
+        return;
+    }
+    CGImageRef cgImage = static_cast<CGImageRef>(brixGraphicsCanvasCreateCGImage(canvas));
+    if (!cgImage) {
+        [button setImage:nil];
+        guiStatusItemSyncImagePosition(button);
+        return;
+    }
+    double imageWidth = width > 0 ? width : static_cast<double>(CGImageGetWidth(cgImage));
+    double imageHeight = height > 0 ? height : static_cast<double>(CGImageGetHeight(cgImage));
+    NSImage* image = [[NSImage alloc] initWithCGImage:cgImage size:NSMakeSize(imageWidth, imageHeight)];
+    [image setTemplate:isTemplate ? YES : NO];
+    CGImageRelease(cgImage);
+    [button setImage:image];
+    guiStatusItemSyncImagePosition(button);
 }
 
 extern "C" void
@@ -6005,12 +6057,15 @@ static const uint32_t kGuiStatusItemPressed = 0;
 static const uint32_t kGuiStatusItemDismissed = 1;
 static const uint32_t kGuiStatusItemMoved = 2;
 
-@interface BxGuiStatusItemTarget : NSObject
+@interface BxGuiStatusItemTarget : NSObject <NSPopoverDelegate>
 @property(nonatomic, weak) NSStatusItem* item;
 @property(nonatomic, assign) BxGuiStatusItemCallback callback;
 @property(nonatomic, assign) void* context;
 @property(nonatomic, assign) void* contextRoot;
+@property(nonatomic, strong) NSMenu* contextMenu;
 @property(nonatomic, strong) BxGuiWindowHost* panel;
+@property(nonatomic, strong) NSPopover* popover;
+@property(nonatomic, strong) BxGuiWindowHost* popoverWindow;
 @property(nonatomic, strong) id localMonitor;
 @property(nonatomic, strong) id globalMonitor;
 @end
@@ -6018,6 +6073,7 @@ static const uint32_t kGuiStatusItemMoved = 2;
 @implementation BxGuiStatusItemTarget
 
 - (void)dealloc {
+    [self closePopover];
     [self endPanel];
     if (self.localMonitor) {
         [NSEvent removeMonitor:self.localMonitor];
@@ -6069,10 +6125,46 @@ static const uint32_t kGuiStatusItemMoved = 2;
     [self endPanel];
 }
 
+- (void)popoverDidClose:(NSNotification*)notification {
+    if (notification.object != self.popover) {
+        return;
+    }
+    BxGuiWindowHost* host = self.popoverWindow;
+    [self endPopover];
+    if (host && !host.closed) {
+        [self send:kGuiStatusItemDismissed];
+    }
+    if ([NSApp isActive] && !guiAppHasVisibleWindow()) {
+        [NSApp deactivate];
+    }
+}
+
+- (void)popUpContextMenu {
+    NSStatusItem* item = self.item;
+    NSMenu* menu = self.contextMenu;
+    if (!item || !menu) {
+        return;
+    }
+    if (self.panel || self.popover) {
+        [self send:kGuiStatusItemDismissed];
+        [self closePopover];
+    }
+    [item setMenu:menu];
+    [[item button] performClick:nil];
+    [item setMenu:nil];
+}
+
 - (NSEvent*)filterPress:(NSEvent*)event {
     NSWindow* anchor = [[self.item button] window];
     NSWindow* window = [event window];
     if (anchor && window == anchor) {
+        BOOL rightPress = [event type] == NSEventTypeRightMouseDown ||
+            ([event type] == NSEventTypeLeftMouseDown &&
+             (([event modifierFlags] & NSEventModifierFlagControl) != 0));
+        if (rightPress && self.contextMenu && ![self.item menu]) {
+            [self popUpContextMenu];
+            return nil;
+        }
         if ([event type] == NSEventTypeLeftMouseDown && ![self.item menu]) {
             [self send:kGuiStatusItemPressed];
             return nil;
@@ -6080,6 +6172,9 @@ static const uint32_t kGuiStatusItemMoved = 2;
         return event;
     }
     if (self.panel && ![self.panel ownsWindow:window]) {
+        [self send:kGuiStatusItemDismissed];
+    }
+    if (self.popoverWindow && ![self.popoverWindow ownsWindow:window]) {
         [self send:kGuiStatusItemDismissed];
     }
     return event;
@@ -6093,9 +6188,7 @@ static const uint32_t kGuiStatusItemMoved = 2;
     }];
 }
 
-- (void)beginPanel:(BxGuiWindowHost*)panel {
-    [self endPanel];
-    self.panel = panel;
+- (void)beginDismissMonitorsForAnchor:(BOOL)watchAnchor {
     NSStatusBarButton* button = [self.item button];
     [button highlight:YES];
     __weak BxGuiStatusItemTarget* target = self;
@@ -6105,21 +6198,19 @@ static const uint32_t kGuiStatusItemMoved = 2;
     }];
     NSNotificationCenter* center = [NSNotificationCenter defaultCenter];
     [center addObserver:self
-               selector:@selector(panelClosed:)
-                   name:NSWindowWillCloseNotification
-                 object:panel.window];
-    [center addObserver:self
                selector:@selector(dismiss:)
                    name:NSApplicationDidResignActiveNotification
                  object:nil];
-    [center addObserver:self
-               selector:@selector(anchorMoved:)
-                   name:NSApplicationDidChangeScreenParametersNotification
-                 object:nil];
-    NSWindow* anchor = [button window];
-    if (anchor) {
-        [center addObserver:self selector:@selector(anchorMoved:) name:NSWindowDidMoveNotification object:anchor];
-        [center addObserver:self selector:@selector(anchorMoved:) name:NSWindowDidResizeNotification object:anchor];
+    if (watchAnchor) {
+        [center addObserver:self
+                   selector:@selector(anchorMoved:)
+                       name:NSApplicationDidChangeScreenParametersNotification
+                     object:nil];
+        NSWindow* anchor = [button window];
+        if (anchor) {
+            [center addObserver:self selector:@selector(anchorMoved:) name:NSWindowDidMoveNotification object:anchor];
+            [center addObserver:self selector:@selector(anchorMoved:) name:NSWindowDidResizeNotification object:anchor];
+        }
     }
     [[[NSWorkspace sharedWorkspace] notificationCenter] addObserver:self
                                                            selector:@selector(dismiss:)
@@ -6127,11 +6218,7 @@ static const uint32_t kGuiStatusItemMoved = 2;
                                                              object:nil];
 }
 
-- (void)endPanel {
-    if (!self.panel) {
-        return;
-    }
-    self.panel = nil;
+- (void)endDismissMonitors {
     [[self.item button] highlight:NO];
     if (self.globalMonitor) {
         [NSEvent removeMonitor:self.globalMonitor];
@@ -6139,6 +6226,91 @@ static const uint32_t kGuiStatusItemMoved = 2;
     }
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
+}
+
+- (void)beginPanel:(BxGuiWindowHost*)panel {
+    [self closePopover];
+    [self endPanel];
+    self.panel = panel;
+    [self beginDismissMonitorsForAnchor:YES];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(panelClosed:)
+                                                 name:NSWindowWillCloseNotification
+                                               object:panel.window];
+}
+
+- (void)endPanel {
+    if (!self.panel) {
+        return;
+    }
+    self.panel = nil;
+    [self endDismissMonitors];
+}
+
+- (BxGuiWindowHost*)createPopoverWithSize:(NSSize)size {
+    [self endPanel];
+    [self closePopover];
+    NSSize clamped = NSMakeSize(std::max(1.0, static_cast<double>(size.width)),
+                                std::max(1.0, static_cast<double>(size.height)));
+    NSViewController* controller = [[NSViewController alloc] init];
+    BxGuiEmbeddedHostView* hostView = guiCreateEmbeddedHostView(clamped);
+    controller.view = (NSView*)hostView;
+    BxGuiWindowHost* guiWindow = guiCreateEmbeddedWindowHost(hostView);
+
+    NSPopover* popover = [[NSPopover alloc] init];
+    popover.contentViewController = controller;
+    popover.contentSize = clamped;
+    popover.behavior = NSPopoverBehaviorApplicationDefined;
+    popover.animates = YES;
+    popover.delegate = self;
+
+    guiWindow.popover = popover;
+    self.popover = popover;
+    self.popoverWindow = guiWindow;
+    return guiWindow;
+}
+
+- (void)showPopover {
+    NSStatusBarButton* button = [self.item button];
+    NSPopover* popover = self.popover;
+    BxGuiWindowHost* guiWindow = self.popoverWindow;
+    if (!button || !popover || !guiWindow || guiWindow.closed) {
+        return;
+    }
+    [self beginDismissMonitorsForAnchor:NO];
+    if (@available(macOS 14.0, *)) {
+        [NSApp activate];
+    } else {
+        [NSApp activateIgnoringOtherApps:YES];
+    }
+    [popover showRelativeToRect:[button bounds]
+                         ofView:button
+                  preferredEdge:NSRectEdgeMaxY];
+    NSWindow* popoverNSWindow = [guiWindow effectiveWindow];
+    if (popoverNSWindow) {
+        [popoverNSWindow makeKeyWindow];
+        if ([guiWindow.canvasView acceptsFirstResponder]) {
+            [popoverNSWindow makeFirstResponder:guiWindow.canvasView];
+        }
+    }
+}
+
+- (void)endPopover {
+    if (!self.popover && !self.popoverWindow) {
+        return;
+    }
+    self.popover.delegate = nil;
+    self.popover = nil;
+    self.popoverWindow = nil;
+    [self endDismissMonitors];
+}
+
+- (void)closePopover {
+    NSPopover* popover = self.popover;
+    [self endPopover];
+    if (popover && [popover isShown]) {
+        [popover close];
+    }
 }
 
 @end
@@ -6152,11 +6324,13 @@ brixGuiStatusItemSetCallback(void* ptr, BxGuiStatusItemCallback callback, void* 
         return;
     }
     BxGuiStatusItemTarget* previous = objc_getAssociatedObject(item, &guiStatusItemTargetKey);
+    NSMenu* preservedMenu = previous ? previous.contextMenu : nil;
     [previous clearCallback];
     BxGuiStatusItemTarget* target = nil;
     if (callback) {
         target = [[BxGuiStatusItemTarget alloc] init];
         target.item = item;
+        target.contextMenu = preservedMenu;
         [target registerCallback:callback context:context];
         [target startMonitoring];
     }
@@ -6164,6 +6338,15 @@ brixGuiStatusItemSetCallback(void* ptr, BxGuiStatusItemCallback callback, void* 
     [button setTarget:target];
     [button setAction:target ? @selector(activate:) : nil];
     objc_setAssociatedObject(item, &guiStatusItemTargetKey, target, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+extern "C" void
+brixGuiStatusItemSetContextMenu(void* ptr, void* menu) {
+    NSStatusItem* item = (__bridge NSStatusItem*)ptr;
+    BxGuiStatusItemTarget* target = item ? objc_getAssociatedObject(item, &guiStatusItemTargetKey) : nil;
+    if (target) {
+        target.contextMenu = (__bridge NSMenu*)menu;
+    }
 }
 
 extern "C" void
@@ -6176,6 +6359,31 @@ brixGuiStatusItemSetPanel(void* ptr, void* window) {
     } else {
         [target endPanel];
     }
+}
+
+extern "C" void*
+brixGuiStatusItemCreatePopover(void* ptr, double width, double height) {
+    NSStatusItem* item = (__bridge NSStatusItem*)ptr;
+    BxGuiStatusItemTarget* target = item ? objc_getAssociatedObject(item, &guiStatusItemTargetKey) : nil;
+    if (!target) {
+        return nullptr;
+    }
+    BxGuiWindowHost* guiWindow = [target createPopoverWithSize:NSMakeSize(width, height)];
+    return guiWindow ? (__bridge_retained void*)guiWindow : nullptr;
+}
+
+extern "C" void
+brixGuiStatusItemShowPopover(void* ptr) {
+    NSStatusItem* item = (__bridge NSStatusItem*)ptr;
+    BxGuiStatusItemTarget* target = item ? objc_getAssociatedObject(item, &guiStatusItemTargetKey) : nil;
+    [target showPopover];
+}
+
+extern "C" void
+brixGuiStatusItemClosePopover(void* ptr) {
+    NSStatusItem* item = (__bridge NSStatusItem*)ptr;
+    BxGuiStatusItemTarget* target = item ? objc_getAssociatedObject(item, &guiStatusItemTargetKey) : nil;
+    [target closePopover];
 }
 
 static CGFloat guiPrimaryScreenTop(void);
@@ -6410,6 +6618,11 @@ brixGuiWindowClose(void* ptr) {
     guiWindow->inputStreamState->cancel();
     [guiWindow cancelRenderFrame];
     if (guiWindow.embedded) {
+        NSPopover* popover = guiWindow.popover;
+        guiWindow.popover = nil;
+        if (popover && [popover isShown]) {
+            [popover close];
+        }
         [guiWindow.canvasView removeFromSuperview];
         [guiWindow.metalView removeFromSuperview];
         return;
@@ -6547,7 +6760,16 @@ brixGuiWindowSetTitle(void* ptr, const char* title) {
 extern "C" void
 brixGuiWindowSetContentSize(void* ptr, double width, double height) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
-    if (!guiWindow || !guiWindow.window || guiWindow.closed) {
+    if (!guiWindow || guiWindow.closed) {
+        return;
+    }
+    if (guiWindow.embedded) {
+        if (guiWindow.popover) {
+            guiWindow.popover.contentSize = NSMakeSize(width, height);
+        }
+        return;
+    }
+    if (!guiWindow.window) {
         return;
     }
     if (guiWindow.panel) {
@@ -10515,6 +10737,9 @@ guiRunQuickLookCloseCallback(void* closure) {
 @implementation BxGuiEmbeddedHostView
 
 - (void)updateAppearance {
+    if (!guiIsExtension) {
+        return;
+    }
     NSAppearance* appearance = [self effectiveAppearance];
     NSAppearanceName match = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
     uint32_t next = [match isEqualToString:NSAppearanceNameDarkAqua] ? 2 : 1;
@@ -10562,6 +10787,9 @@ guiRunQuickLookCloseCallback(void* closure) {
         [self updateAppearance];
         if (self.guiWindow && !self.guiWindow.closed) {
             guiReceiveBackingScaleNotification(self.guiWindow);
+            if (!guiIsExtension && [self.guiWindow.canvasView acceptsFirstResponder]) {
+                [window makeFirstResponder:self.guiWindow.canvasView];
+            }
         }
         [self notifySizeIfNeeded];
     }
@@ -10672,6 +10900,14 @@ guiRunQuickLookCloseCallback(void* closure) {
 }
 
 @end
+
+static BxGuiEmbeddedHostView*
+guiCreateEmbeddedHostView(NSSize size) {
+    BxGuiEmbeddedHostView* hostView = [[BxGuiEmbeddedHostView alloc] initWithFrame:NSMakeRect(0, 0, size.width, size.height)];
+    [hostView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [hostView setWantsLayer:YES];
+    return hostView;
+}
 
 static BxGuiWindowHost*
 guiCreateEmbeddedWindowHost(BxGuiEmbeddedHostView* hostView) {
