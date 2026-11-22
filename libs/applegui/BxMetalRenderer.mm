@@ -13048,6 +13048,8 @@ extern "C" bool brixGuiMetalRendererResize(
         }
     }
 
+    waitForPresenter(renderer);
+
     renderer->width = width;
     renderer->height = height;
     renderer->scale = scale;

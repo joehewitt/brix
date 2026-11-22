@@ -3150,6 +3150,9 @@ guiPresentCanvas(
     CALayer* layer = [self.metalView layer];
     BOOL flushes = !self.couplesPresentation && [layer isKindOfClass:[CAMetalLayer class]] &&
         static_cast<CAMetalLayer*>(layer).presentsWithTransaction;
+    if (flushes && self.window) {
+        [self.window layoutIfNeeded];
+    }
     [CATransaction commit];
     if (flushes) {
         [CATransaction flush];
@@ -7361,7 +7364,8 @@ brixGuiWindowSetCanvasLayer(void* ptr, void* layerPointer) {
     }
     [[guiWindow.canvasView layer] setContents:nil];
     [layer setFrame:[guiWindow.metalView bounds]];
-    [layer setContentsGravity:kCAGravityResize];
+    [layer setContentsGravity:guiWindow.panel ? kCAGravityTopLeft : kCAGravityResize];
+    [layer setMasksToBounds:guiWindow.panel ? YES : NO];
     [layer setAutoresizingMask:kCALayerWidthSizable | kCALayerHeightSizable];
     if ([guiWindow.metalView layer] != layer) {
         return false;
@@ -8221,6 +8225,8 @@ brixGuiMaterialSetFrame(
             }
             if (!NSEqualRects([glass frame], frame)) {
                 [glass setFrame:frame];
+                [glass setNeedsLayout:YES];
+                [glass layoutSubtreeIfNeeded];
                 [guiPeerWindowHost(glass) couplePresentation];
             }
             if ([glass alphaValue] != static_cast<CGFloat>(opacity)) {
