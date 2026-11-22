@@ -1412,6 +1412,13 @@ brixGuiWindowCreate(const char* title, double width, double height) {
 }
 
 extern "C" void
+brixGuiWindowRetain(void* ptr) {
+    if (ptr) {
+        CFRetain(ptr);
+    }
+}
+
+extern "C" void
 brixGuiWindowRelease(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
     if (!guiWindow) {

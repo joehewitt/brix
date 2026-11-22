@@ -6630,7 +6630,7 @@ brixGuiStatusItemCreatePopover(void* ptr, double width, double height) {
         return nullptr;
     }
     BxGuiWindowHost* guiWindow = [target createPopoverWithSize:NSMakeSize(width, height)];
-    return guiWindow ? (__bridge_retained void*)guiWindow : nullptr;
+    return guiWindow ? (__bridge void*)guiWindow : nullptr;
 }
 
 extern "C" void
@@ -6804,6 +6804,13 @@ brixGuiWindowGetNativeWindow(void* ptr) {
     BxGuiWindowHost* guiWindow = getWindow(ptr);
     NSWindow* window = guiWindow ? [guiWindow effectiveWindow] : nil;
     return window ? (__bridge void*)window : nullptr;
+}
+
+extern "C" void
+brixGuiWindowRetain(void* ptr) {
+    if (ptr) {
+        CFRetain(ptr);
+    }
 }
 
 extern "C" void
@@ -10980,16 +10987,16 @@ struct BxGuiQuickLookPreviewRecord : BxGuiCallbackRecord {
     BxGuiQuickLookPreviewRecord(
         BxGuiQuickLookPreviewCallback aCallback,
         void* aContext,
-        void* aHostWindow,
+        BxGuiWindowHost* aHost,
         std::string aPath,
         BxGuiQuickLookCompletion* aCompletion):
         BxGuiCallbackRecord(aContext),
         callback(aCallback),
-        hostWindow(aHostWindow),
+        host(aHost),
         path(std::move(aPath)),
         completion(aCompletion) {}
     BxGuiQuickLookPreviewCallback callback;
-    void* hostWindow;
+    BxGuiWindowHost* host;
     std::string path;
     BxGuiQuickLookCompletion* completion;
 };
@@ -11033,17 +11040,14 @@ guiFinishQuickLookCompletion(BxGuiQuickLookCompletion* completion, const char* e
 static void
 guiRunQuickLookPreviewCallback(void* closure) {
     BxGuiQuickLookPreviewRecord* record = static_cast<BxGuiQuickLookPreviewRecord*>(closure);
-    if (!brixProcessTerminationRequested() && record->callback) {
+    if (!brixProcessTerminationRequested() && record->callback && record->host) {
         record->callback(
             record->context,
-            record->hostWindow,
+            (__bridge void*)record->host,
             record->path.c_str(),
             record->completion
         );
     } else {
-        if (record->hostWindow) {
-            CFRelease(record->hostWindow);
-        }
         guiFinishQuickLookCompletion(record->completion, "Preview extension unavailable");
     }
     guiFinishCallbackTask(record);
@@ -11348,16 +11352,14 @@ guiCreateEmbeddedWindowHost(BxGuiEmbeddedHostView* hostView) {
         scoped ? url : nil
     };
 
-    void* retainedHost = (__bridge_retained void*)guiWindow;
     BxGuiQuickLookPreviewRecord* record = new BxGuiQuickLookPreviewRecord(
         guiQuickLookPreviewCallback,
         guiQuickLookExtensionContext,
-        retainedHost,
+        guiWindow,
         std::string(path),
         completion
     );
     if (!brixScheduleMainTaskFromNative(guiRunQuickLookPreviewCallback, record)) {
-        CFRelease(retainedHost);
         guiFinishQuickLookCompletion(completion, "Preview extension shutting down");
         delete record;
     }

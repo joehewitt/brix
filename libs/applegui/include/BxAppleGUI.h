@@ -139,6 +139,7 @@ extern "C" double brixGuiStatusItemGetScreenBound(void* item, uint32_t component
 
 extern "C" void* brixGuiWindowCreate(const char* title, double width, double height);
 extern "C" void* brixGuiWindowCreateWithKind(const char* title, double width, double height, uint32_t kind);
+extern "C" void brixGuiWindowRetain(void* window);
 extern "C" void brixGuiWindowRelease(void* window);
 extern "C" void* brixGuiWindowGetNativeWindow(void* window);
 extern "C" void brixGuiWindowShow(void* window);
