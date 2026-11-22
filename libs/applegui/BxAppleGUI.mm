@@ -3317,6 +3317,9 @@ guiPresentCanvas(
     [self updateStoplights];
     [self markShadowStale];
     guiReceiveMoveNotification(self);
+    if (self.frameUpdateOpen) {
+        return;
+    }
     uint64_t budgetNanoseconds = self.lastFrameRefreshIntervalNanoseconds
         ? self.lastFrameRefreshIntervalNanoseconds
         : kGuiResizeDefaultNanosecondBudget;
@@ -6418,10 +6421,11 @@ brixGuiWindowSetContentSize(void* ptr, double width, double height) {
         NSRect next = [guiWindow.window frameRectForContentRect:NSMakeRect(0, 0, width, height)];
         next.origin.x = frame.origin.x;
         next.origin.y = NSMaxY(frame) - NSHeight(next);
-        [guiWindow.window setFrame:next display:YES];
+        [guiWindow.window setFrame:next display:!guiWindow.frameUpdateOpen];
     } else {
         [guiWindow.window setContentSize:NSMakeSize(width, height)];
     }
+    [guiWindow couplePresentation];
 }
 
 extern "C" double

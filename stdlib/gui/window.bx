@@ -3865,7 +3865,19 @@
     (call schedule-layout)
     (if (and native (!= requested-native-size size))
       (= requested-native-size size)
-      (call C:brixGuiWindowSetContentSize native (. size width) (. size height))
+      (if (and is-visible (not is-closed) (not is-rendering))
+        (let frame (use frame-scope))
+        (call C:brixGuiWindowSetContentSize native (. size width) (. size height))
+        (if is-frame-scheduled
+          (call C:brixGuiWindowCancelFrame (!! native))
+          (= is-frame-scheduled false)
+        )
+        (= (. frame committed) (call update-frame))
+        (call sync-undo-state)
+        (else
+          (call C:brixGuiWindowSetContentSize native (. size width) (. size height))
+        )
+      )
     )
   )
   (fn-do _ window-position-changed _
