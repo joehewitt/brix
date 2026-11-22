@@ -80,6 +80,7 @@
   (event + closed ClosedEvent)
   (prop + title _ (= (?? (?. #app #title) "")))
   (prop + kind _ (= (. WindowKind standard)))
+  (prop + has-shadow _ (= true))
   (prop + titlebar-visible _ (= true))
   (prop + stoplight-offset (? Point))
   (prop + is-full-screen _ (= false))
@@ -218,7 +219,7 @@
   (depends window-zoom-changed zoom)
   (depends window-position-changed position)
   (depends window-background-changed background)
-  (depends window-chrome-changed kind titlebar-visible stoplight-offset appearance allows-zoom)
+  (depends window-chrome-changed kind has-shadow titlebar-visible stoplight-offset appearance allows-zoom)
   (depends window-title-changed title)
   (prop _ hover-tip _
     (machine
@@ -700,7 +701,17 @@
     (return-if (if (not handle)))
     (blank)
     (= is-visible true)
-    (call schedule-render)
+    (call show-activity true)
+    (if is-frame-scheduled
+      (call C:brixGuiWindowCancelFrame handle)
+      (= is-frame-scheduled false)
+    )
+    (= needs-layout true)
+    (= is-render-invalid true)
+    (= metal-surface-reset true)
+    (if (not is-rendering)
+      (call render-frame)
+    )
     (call C:brixGuiWindowShow handle)
     (if focused-box
       (let ignored (call request-native-focus focused-box))
@@ -712,6 +723,10 @@
     (blank)
     (= is-visible false)
     (= is-active false)
+    (if is-frame-scheduled
+      (call C:brixGuiWindowCancelFrame handle)
+      (= is-frame-scheduled false)
+    )
     (call C:brixGuiWindowHide handle)
   )
   (fn-do + bring-to-front _
@@ -824,7 +839,7 @@
     (blank)
     (if (not native)
       (call set-minimum-heap-goal gui-minimum-heap-goal)
-      (= native (call C:brixGuiWindowCreate title (. size width) (. size height)))
+      (= native (call C:brixGuiWindowCreateWithKind title (. size width) (. size height) kind))
       (= native-transparency-known false)
       (= requested-native-position null)
       (call sync-native-transparency)
@@ -2386,6 +2401,7 @@
     (return-if (if (not native)))
     (blank)
     (call C:brixGuiWindowSetKind native kind)
+    (call C:brixGuiWindowSetHasShadow (!! native) has-shadow)
     (let offset (?? stoplight-offset (call Point 0 0)))
     (call C:brixGuiWindowSetChrome
       (block

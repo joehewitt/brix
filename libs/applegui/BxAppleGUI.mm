@@ -41,6 +41,14 @@
 @class BxGuiWindowHost;
 @class BxGuiStoplightView;
 @class BxGuiPopupHost;
+@class BxGuiQuickLookPanelController;
+
+@interface BxGuiQuickLookPanelController : NSObject <QLPreviewPanelDataSource, QLPreviewPanelDelegate>
+
+@property(nonatomic, weak) BxGuiWindowHost* owner;
+@property(nonatomic, strong) NSURL* previewURL;
+
+@end
 
 @interface BxGuiEventWindow : NSWindow
 
@@ -860,6 +868,8 @@ static const size_t bxGuiPresentSurfaceLimit = 3;
 @property(nonatomic, assign) uint64_t renderNotBeforeNanoseconds;
 @property(nonatomic, assign) uint64_t lastFrameRefreshIntervalNanoseconds;
 @property(nonatomic, assign) double lastFrameEventTimeSeconds;
+@property(nonatomic, strong) BxGuiQuickLookPanelController* quickLookPanelController;
+@property(nonatomic, assign) BOOL quickLookControlling;
 
 - (void)requestRenderFrameWithCallback:(BxGuiActionCallback)callback
                                context:(void*)context
@@ -911,6 +921,9 @@ static const size_t bxGuiPresentSurfaceLimit = 3;
 - (NSTextInputContext*)activeTextInputContext;
 - (void)finishTextComposition;
 - (void)discardTextComposition;
+- (void)beginPreviewPanelControl:(QLPreviewPanel*)panel;
+- (void)endPreviewPanelControl:(QLPreviewPanel*)panel;
+- (void)closeQuickLookPanel;
 
 @end
 
@@ -1702,7 +1715,7 @@ guiTextControlContains(NSView* control, NSPoint superviewPoint) {
 
 static BOOL
 guiViewBlocksCanvas(NSView* view, NSPoint windowPoint) {
-    if ([view isHidden] || [view isKindOfClass:[BxGuiMaterialView class]]) {
+    if ([view isHidden] || guiIsMaterialSubview(view, nullptr)) {
         return NO;
     }
     NSPoint local = [view convertPoint:windowPoint fromView:nil];
@@ -2317,6 +2330,23 @@ guiResponderEditsTextInput(NSResponder* responder) {
 
 - (BOOL)canBecomeKeyWindow {
     return YES;
+}
+
+- (BOOL)canBecomeMainWindow {
+    return [super canBecomeMainWindow] || self.guiWindow.quickLookPanelController.previewURL != nil;
+}
+
+- (BOOL)acceptsPreviewPanelControl:(QLPreviewPanel*)panel {
+    return self.guiWindow && !self.guiWindow.closed &&
+        self.guiWindow.quickLookPanelController.previewURL != nil;
+}
+
+- (void)beginPreviewPanelControl:(QLPreviewPanel*)panel {
+    [self.guiWindow beginPreviewPanelControl:panel];
+}
+
+- (void)endPreviewPanelControl:(QLPreviewPanel*)panel {
+    [self.guiWindow endPreviewPanelControl:panel];
 }
 
 - (BOOL)performKeyEquivalent:(NSEvent*)event {
@@ -3220,6 +3250,7 @@ guiPresentCanvas(
         brixRemoveRoot(self.textActionContextRoot);
         self.textActionContextRoot = nullptr;
     }
+    [self closeQuickLookPanel];
     [self closePopups];
     [self restoreStoplights];
     [self finishFrameUpdate];
@@ -3266,6 +3297,7 @@ guiPresentCanvas(
     self.closed = YES;
     self.textInputActive = NO;
     self.markedText = nil;
+    [self closeQuickLookPanel];
     [self closePopups];
     [self finishFrameUpdate];
     [self cancelRenderFrame];
@@ -3420,7 +3452,55 @@ guiPresentCanvas(
             return YES;
         }
     }
+    if (self.quickLookControlling && [QLPreviewPanel sharedPreviewPanelExists] &&
+        window == [QLPreviewPanel sharedPreviewPanel]) {
+        return YES;
+    }
     return NO;
+}
+
+- (void)beginPreviewPanelControl:(QLPreviewPanel*)panel {
+    if (!self.quickLookPanelController) {
+        BxGuiQuickLookPanelController* controller = [[BxGuiQuickLookPanelController alloc] init];
+        controller.owner = self;
+        self.quickLookPanelController = controller;
+    }
+    self.quickLookControlling = YES;
+    panel.dataSource = self.quickLookPanelController;
+    panel.delegate = self.quickLookPanelController;
+}
+
+- (void)endPreviewPanelControl:(QLPreviewPanel*)panel {
+    if (self.quickLookPanelController) {
+        if (panel.dataSource == self.quickLookPanelController) {
+            panel.dataSource = nil;
+        }
+        if (panel.delegate == self.quickLookPanelController) {
+            panel.delegate = nil;
+        }
+    }
+    self.quickLookControlling = NO;
+}
+
+- (void)closeQuickLookPanel {
+    if (self.quickLookPanelController) {
+        self.quickLookPanelController.previewURL = nil;
+    }
+    if ([QLPreviewPanel sharedPreviewPanelExists]) {
+        QLPreviewPanel* panel = [QLPreviewPanel sharedPreviewPanel];
+        if (self.quickLookControlling) {
+            if (panel.dataSource == self.quickLookPanelController) {
+                panel.dataSource = nil;
+            }
+            if (panel.delegate == self.quickLookPanelController) {
+                panel.delegate = nil;
+            }
+            if ([panel isVisible]) {
+                [panel orderOut:nil];
+            }
+            self.quickLookControlling = NO;
+        }
+    }
 }
 
 - (void)settleKeyResignation {
@@ -6017,16 +6097,18 @@ brixGuiStatusItemGetScreenBound(void* ptr, uint32_t component) {
 // **********************************************************************************************
 
 extern "C" void*
-brixGuiWindowCreate(const char* title, double width, double height) {
+brixGuiWindowCreateWithKind(const char* title, double width, double height, uint32_t kind) {
     ensureApplication();
     brixGuiMetalWarmUp();
 
+    BOOL panel = kind == 1;
     NSRect frame = NSMakeRect(100, 100, width, height);
-    NSWindowStyleMask style =
-        NSWindowStyleMaskTitled |
-        NSWindowStyleMaskClosable |
-        NSWindowStyleMaskMiniaturizable |
-        NSWindowStyleMaskResizable;
+    NSWindowStyleMask style = panel
+        ? NSWindowStyleMaskBorderless
+        : (NSWindowStyleMaskTitled |
+           NSWindowStyleMaskClosable |
+           NSWindowStyleMaskMiniaturizable |
+           NSWindowStyleMaskResizable);
 
     BxGuiEventWindow* window = [[BxGuiEventWindow alloc]
         initWithContentRect:frame
@@ -6038,11 +6120,18 @@ brixGuiWindowCreate(const char* title, double width, double height) {
     [window setTitle:stringFromUTF8(title)];
     [window setReleasedWhenClosed:NO];
     [window registerForDraggedTypes:guiDropTypes()];
+    if (panel) {
+        window.level = NSStatusWindowLevel;
+        window.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace |
+            NSWindowCollectionBehaviorFullScreenAuxiliary |
+            NSWindowCollectionBehaviorTransient |
+            NSWindowCollectionBehaviorIgnoresCycle;
+        window.movable = NO;
+        window.ignoresMouseEvents = NO;
+    }
 
     BxGuiFlippedView* contentView = [[BxGuiFlippedView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
     [contentView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    // A single layer tree gives the frame transaction one commit boundary for custom painting and
-    // AppKit controls alike.
     [contentView setWantsLayer:YES];
     [window setContentView:contentView];
 
@@ -6055,8 +6144,6 @@ brixGuiWindowCreate(const char* title, double width, double height) {
     [canvasLayer setContentsGravity:kCAGravityResize];
     [contentView addSubview:canvasView positioned:NSWindowBelow relativeTo:nil];
 
-    // Keep window presentation out of the Core Graphics canvas layer tree. AppKit can continue
-    // updating the canvas contents without ever touching the CAMetalLayer owned by this view.
     BxGuiMetalView* metalView = [[BxGuiMetalView alloc] initWithFrame:[contentView bounds]];
     [metalView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [metalView setWantsLayer:YES];
@@ -6067,6 +6154,7 @@ brixGuiWindowCreate(const char* title, double width, double height) {
     BxGuiWindowHost* guiWindow = [[BxGuiWindowHost alloc] init];
     guiWindow->inputStreamState = std::make_shared<BxGuiInputStreamState>();
     guiWindow.window = window;
+    guiWindow.panel = panel;
     guiWindow.titlebarVisible = YES;
     guiWindow.contentView = contentView;
     guiWindow.canvasView = canvasView;
@@ -6077,6 +6165,11 @@ brixGuiWindowCreate(const char* title, double width, double height) {
     [window setDelegate:guiWindow];
 
     return (__bridge_retained void*)guiWindow;
+}
+
+extern "C" void*
+brixGuiWindowCreate(const char* title, double width, double height) {
+    return brixGuiWindowCreateWithKind(title, width, height, 0);
 }
 
 extern "C" void
@@ -6225,12 +6318,23 @@ brixGuiWindowSetKind(void* ptr, uint32_t kind) {
             NSWindowCollectionBehaviorTransient | NSWindowCollectionBehaviorIgnoresCycle
         : NSWindowCollectionBehaviorDefault;
     window.movable = !panel;
-    window.hasShadow = YES;
     if (panel) {
         window.ignoresMouseEvents = NO;
     }
     [host updateStoplights];
     [host markShadowStale];
+}
+
+extern "C" void
+brixGuiWindowSetHasShadow(void* ptr, bool hasShadow) {
+    BxGuiWindowHost* host = getWindow(ptr);
+    if (!host || host.closed || !host.window) {
+        return;
+    }
+    if (host.window.hasShadow != hasShadow) {
+        host.window.hasShadow = hasShadow;
+        [host markShadowStale];
+    }
 }
 
 extern "C" void
@@ -6245,7 +6349,7 @@ extern "C" void
 brixGuiWindowSetChrome(
     void* ptr, bool titlebarVisible, bool hasStoplightOffset, double x, double y, double zoom) {
     BxGuiWindowHost* host = getWindow(ptr);
-    if (!host || host.closed) return;
+    if (!host || host.closed || host.panel) return;
     host.hasStoplightOffset = hasStoplightOffset;
     host.stoplightOffset = NSMakePoint(std::isfinite(x) ? x : 0, std::isfinite(y) ? y : 0);
     host.stoplightZoom = std::isfinite(zoom) && zoom > 0 ? zoom : 1;
@@ -9159,19 +9263,87 @@ brixGuiModifierDoubleTapUnregister(void* ptr) {
 
 @property(nonatomic, strong) QLPreviewView* control;
 
+- (void)closeControl;
+
 @end
 
 @implementation BxGuiQuickLookHost
 
+- (void)closeControl {
+    QLPreviewView* view = self.control;
+    self.control = nil;
+    if (view) {
+        view.previewItem = nil;
+        [view close];
+        [view removeFromSuperview];
+    }
+}
+
 - (void)dealloc {
-    if (self.control) {
-        [self.control close];
-        [self.control removeFromSuperview];
-        self.control = nil;
+    [self closeControl];
+}
+
+@end
+
+@implementation BxGuiQuickLookPanelController
+
+- (NSInteger)numberOfPreviewItemsInPreviewPanel:(QLPreviewPanel*)panel {
+    return self.previewURL ? 1 : 0;
+}
+
+- (id<QLPreviewItem>)previewPanel:(QLPreviewPanel*)panel previewItemAtIndex:(NSInteger)index {
+    return (id<QLPreviewItem>)self.previewURL;
+}
+
+- (BOOL)previewPanel:(QLPreviewPanel*)panel handleEvent:(NSEvent*)event {
+    if ([event type] != NSEventTypeKeyDown) {
+        return NO;
+    }
+    BxGuiWindowHost* owner = self.owner;
+    if (!owner || owner.closed) {
+        return NO;
+    }
+    unsigned short keyCode = [event keyCode];
+    NSEventModifierFlags mods = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
+    BOOL cmdOnly = mods == NSEventModifierFlagCommand;
+    BOOL noMods = mods == 0;
+    if ((keyCode == 49 && noMods) || (keyCode == 53 && noMods) || (keyCode == 16 && cmdOnly)) {
+        self.previewURL = nil;
+        [panel orderOut:nil];
+        if ([owner.window isVisible] && [NSApp isActive]) {
+            [owner.window makeKeyAndOrderFront:nil];
+        }
+        return YES;
+    }
+    if (keyCode == 126 || keyCode == 125 || keyCode == 36 || keyCode == 76) {
+        [owner dispatchPeerKeyEvent:event];
+        return YES;
+    }
+    return NO;
+}
+
+- (void)windowDidResignKey:(NSNotification*)notification {
+    [self.owner settleKeyResignation];
+}
+
+- (void)windowWillClose:(NSNotification*)notification {
+    self.previewURL = nil;
+    BxGuiWindowHost* owner = self.owner;
+    if (owner && !owner.closed && [owner.window isVisible] && [NSApp isActive]) {
+        [owner.window makeKeyAndOrderFront:nil];
     }
 }
 
 @end
+
+static NSURL*
+guiReachableFileURL(const char* path) {
+    if (!path || !path[0]) {
+        return nil;
+    }
+    NSURL* url = [NSURL fileURLWithPath:stringFromUTF8(path)];
+    return [url checkResourceIsReachableAndReturnError:nil] ? url : nil;
+}
 
 extern "C" void*
 brixGuiQuickLookCreate(void* windowPtr) {
@@ -9196,10 +9368,7 @@ brixGuiQuickLookRelease(void* ptr) {
     }
     brixGuiPeerDetach(ptr);
     BxGuiQuickLookHost* host = (__bridge BxGuiQuickLookHost*)ptr;
-    if (host.control) {
-        host.control.previewItem = nil;
-        [host.control close];
-    }
+    [host closeControl];
     CFAutorelease(ptr);
 }
 
@@ -9212,18 +9381,100 @@ brixGuiQuickLookSetPath(void* ptr, const char* path) {
     if (!host.control) {
         return;
     }
-    if (!path || !path[0]) {
-        host.control.previewItem = nil;
+    @autoreleasepool {
+        host.control.previewItem = guiReachableFileURL(path);
+    }
+}
+
+extern "C" void
+brixGuiQuickLookPanelShow(void* windowPtr, const char* path) {
+    BxGuiWindowHost* guiWindow = getWindow(windowPtr);
+    if (!guiWindow || !guiWindow.window || guiWindow.closed) {
         return;
     }
     @autoreleasepool {
-        NSURL* url = [NSURL fileURLWithPath:stringFromUTF8(path)];
-        if ([url checkResourceIsReachableAndReturnError:nil]) {
-            host.control.previewItem = url;
-        } else {
-            host.control.previewItem = nil;
+        NSURL* url = guiReachableFileURL(path);
+        if (!url) {
+            return;
         }
+        if (!guiWindow.quickLookPanelController) {
+            BxGuiQuickLookPanelController* controller = [[BxGuiQuickLookPanelController alloc] init];
+            controller.owner = guiWindow;
+            guiWindow.quickLookPanelController = controller;
+        }
+        guiWindow.quickLookPanelController.previewURL = url;
+        if ([guiWindow.window isVisible] && ![guiWindow.window isMainWindow]) {
+            [guiWindow.window makeMainWindow];
+        }
+        QLPreviewPanel* panel = [QLPreviewPanel sharedPreviewPanel];
+        [panel setLevel:guiWindow.window.level + 1];
+        [panel setCollectionBehavior:
+            NSWindowCollectionBehaviorMoveToActiveSpace |
+            NSWindowCollectionBehaviorFullScreenAuxiliary];
+        if (![panel isVisible]) {
+            [panel orderFront:nil];
+        }
+        if (!guiWindow.quickLookControlling) {
+            [panel updateController];
+        }
+        [panel reloadData];
     }
+}
+
+extern "C" void
+brixGuiQuickLookPanelUpdate(void* windowPtr, const char* path) {
+    BxGuiWindowHost* guiWindow = getWindow(windowPtr);
+    if (!guiWindow || guiWindow.closed || ![QLPreviewPanel sharedPreviewPanelExists]) {
+        return;
+    }
+    QLPreviewPanel* panel = [QLPreviewPanel sharedPreviewPanel];
+    if (![panel isVisible]) {
+        return;
+    }
+    @autoreleasepool {
+        NSURL* url = guiReachableFileURL(path);
+        if (!url) {
+            brixGuiQuickLookPanelClose(windowPtr);
+            return;
+        }
+        if (!guiWindow.quickLookPanelController) {
+            BxGuiQuickLookPanelController* controller = [[BxGuiQuickLookPanelController alloc] init];
+            controller.owner = guiWindow;
+            guiWindow.quickLookPanelController = controller;
+        }
+        if ([guiWindow.quickLookPanelController.previewURL isEqual:url]) {
+            return;
+        }
+        guiWindow.quickLookPanelController.previewURL = url;
+        if (!guiWindow.quickLookControlling) {
+            [panel updateController];
+        }
+        [panel reloadData];
+    }
+}
+
+extern "C" void
+brixGuiQuickLookPanelClose(void* windowPtr) {
+    BxGuiWindowHost* guiWindow = getWindow(windowPtr);
+    if (guiWindow && guiWindow.quickLookPanelController) {
+        guiWindow.quickLookPanelController.previewURL = nil;
+    }
+    if (![QLPreviewPanel sharedPreviewPanelExists]) {
+        return;
+    }
+    QLPreviewPanel* panel = [QLPreviewPanel sharedPreviewPanel];
+    if ([panel isVisible]) {
+        [panel orderOut:nil];
+    }
+    if (guiWindow && !guiWindow.closed && [guiWindow.window isVisible] && [NSApp isActive]) {
+        [guiWindow.window makeKeyAndOrderFront:nil];
+    }
+}
+
+extern "C" bool
+brixGuiQuickLookPanelIsVisible(void) {
+    return [QLPreviewPanel sharedPreviewPanelExists] &&
+        [[QLPreviewPanel sharedPreviewPanel] isVisible];
 }
 
 // **********************************************************************************************

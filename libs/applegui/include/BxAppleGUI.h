@@ -132,6 +132,7 @@ extern "C" double brixGuiStatusItemGetScreenBound(void* item, uint32_t component
 // **********************************************************************************************
 
 extern "C" void* brixGuiWindowCreate(const char* title, double width, double height);
+extern "C" void* brixGuiWindowCreateWithKind(const char* title, double width, double height, uint32_t kind);
 extern "C" void brixGuiWindowRelease(void* window);
 extern "C" void* brixGuiWindowGetNativeWindow(void* window);
 extern "C" void brixGuiWindowShow(void* window);
@@ -146,6 +147,7 @@ extern "C" void brixGuiWindowSetChrome(void* window, bool titlebarVisible, bool 
 extern "C" double brixGuiWindowGetStoplightEdge(void* window);
 extern "C" void brixGuiWindowSetAllowsZoom(void* window, bool allowsZoom);
 extern "C" void brixGuiWindowSetKind(void* window, uint32_t kind);
+extern "C" void brixGuiWindowSetHasShadow(void* window, bool hasShadow);
 extern "C" bool brixGuiWindowRequestDrag(void* window, uint64_t token);
 extern "C" void brixGuiWindowPerformTitlebarDoubleClick(void* window);
 extern "C" void brixGuiWindowSetContentSize(void* window, double width, double height);
@@ -456,6 +458,10 @@ extern "C" void brixGuiModifierDoubleTapUnregister(void* monitor);
 extern "C" void* brixGuiQuickLookCreate(void* window);
 extern "C" void brixGuiQuickLookRelease(void* quickLook);
 extern "C" void brixGuiQuickLookSetPath(void* quickLook, const char* path);
+extern "C" void brixGuiQuickLookPanelShow(void* window, const char* path);
+extern "C" void brixGuiQuickLookPanelUpdate(void* window, const char* path);
+extern "C" void brixGuiQuickLookPanelClose(void* window);
+extern "C" bool brixGuiQuickLookPanelIsVisible(void);
 
 // **********************************************************************************************
 

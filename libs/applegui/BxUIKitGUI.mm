@@ -2022,6 +2022,10 @@ extern "C" double brixGuiCursorWidth(void* cursor) { return 0; }
 extern "C" double brixGuiCursorHotspotX(void* cursor) { return 0; }
 extern "C" double brixGuiCursorHotspotY(void* cursor) { return 0; }
 
+extern "C" void* brixGuiWindowCreateWithKind(const char* title, double width, double height, uint32_t kind) {
+    return brixGuiWindowCreate(title, width, height);
+}
+extern "C" void brixGuiWindowSetHasShadow(void* window, bool hasShadow) {}
 extern "C" void brixGuiWindowHide(void* window) {}
 extern "C" bool brixGuiWindowIsVisible(void* window) { return false; }
 extern "C" double brixGuiMouseScreenBound(uint32_t component) { return 0; }
@@ -2046,3 +2050,7 @@ extern "C" void brixGuiModifierDoubleTapUnregister(void* monitor) {}
 extern "C" void* brixGuiQuickLookCreate(void* window) { return nullptr; }
 extern "C" void brixGuiQuickLookRelease(void* quickLook) {}
 extern "C" void brixGuiQuickLookSetPath(void* quickLook, const char* path) {}
+extern "C" void brixGuiQuickLookPanelShow(void* window, const char* path) {}
+extern "C" void brixGuiQuickLookPanelUpdate(void* window, const char* path) {}
+extern "C" void brixGuiQuickLookPanelClose(void* window) {}
+extern "C" bool brixGuiQuickLookPanelIsVisible(void) { return false; }
