@@ -5491,6 +5491,12 @@ struct ClipState {
 
 static const uint32_t kExpandDepth = 64;
 
+struct PaperOrigin {
+    double x = 0;
+    double y = 0;
+    double octave = 1;
+};
+
 struct ExpandState {
     MetalRenderer* renderer;
     double matrix[6] = {1, 0, 0, 1, 0, 0};
@@ -5503,8 +5509,8 @@ struct ExpandState {
     uint32_t roundedClip = 0;
     uint32_t coverageClip = 0;
     double matrixStack[kExpandDepth][6];
-    double paper[2] = {0, 0};
-    double paperStack[kExpandDepth][2];
+    PaperOrigin paper;
+    PaperOrigin paperStack[kExpandDepth];
     uint32_t matrixDepth = 0;
     uint32_t matrixOverflow = 0;
     uint32_t layerStack[kExpandDepth];
@@ -6342,12 +6348,25 @@ static bool emitFallbackGlyph(
 }
 
 static void fillMultiply(const double* left, const double* right, double* out);
+
+static double paperOctave(const double* matrix) {
+    double zoom = std::sqrt(std::fabs(matrix[0] * matrix[3] - matrix[1] * matrix[2]));
+    if (!(zoom > 0) || !std::isfinite(zoom)) {
+        return 1;
+    }
+    return std::exp2(std::round(std::log2(zoom))) / zoom;
+}
+
+static float paperScale(const MetalRenderer* renderer, const PaperOrigin& paper) {
+    return renderer->scale > 0 ? static_cast<float>(paper.octave / renderer->scale) : 1.0f;
+}
+
 static uint32_t appendGradientPaint(
     MetalRenderer* renderer,
     const ChunkPathSet& set,
     uint32_t index,
     const double* device,
-    const double* paper,
+    const PaperOrigin& paper,
     float alpha,
     uint32_t& shader,
     bool text = false
@@ -7732,6 +7751,7 @@ static uint32_t appendShaderPaint(
     MetalRenderer* renderer,
     const ChunkPathSet& set,
     const BxGuiMetalGradient& gradient,
+    float paper,
     FillPaintGPU& paint
 ) {
     if (gradient.kind == 5) {
@@ -7740,7 +7760,6 @@ static uint32_t appendShaderPaint(
         paint.p1 = static_cast<float>(gradient.start[1]);
         paint.p2 = static_cast<float>(gradient.end[0]);
         paint.p3 = static_cast<float>(gradient.end[1]);
-        float paper = renderer->scale > 0 ? static_cast<float>(1.0 / renderer->scale) : 1.0f;
         std::memcpy(&paint.padding, &paper, sizeof(paper));
     } else {
         paint.kind = 6;
@@ -7771,7 +7790,7 @@ static uint32_t appendGradientPaint(
     const ChunkPathSet& set,
     uint32_t index,
     const double* device,
-    const double* paper,
+    const PaperOrigin& paper,
     float alpha,
     uint32_t& shader,
     bool text
@@ -7814,12 +7833,12 @@ static uint32_t appendGradientPaint(
     paint.d = static_cast<float>(inverse[3]);
     paint.tx = static_cast<float>(inverse[4]);
     paint.ty = static_cast<float>(inverse[5]);
-    paint.paperX = static_cast<float>(paper[0]);
-    paint.paperY = static_cast<float>(paper[1]);
+    paint.paperX = static_cast<float>(paper.x);
+    paint.paperY = static_cast<float>(paper.y);
     paint.kind = gradient.kind;
     if (custom) {
         shader = gradient.shader;
-        return appendShaderPaint(renderer, set, gradient, paint);
+        return appendShaderPaint(renderer, set, gradient, paperScale(renderer, paper), paint);
     }
     bool translucent = alpha < 1 || (index - 1 < set.gradientTranslucent.size() && set.gradientTranslucent[index - 1] != 0);
     if (gradient.kind == 1) {
@@ -8223,9 +8242,9 @@ static void emitBrushDraw(
     draw.style.taperEnd = params[9];
     draw.style.seed = params[11];
     draw.style.total = static_cast<float>(extra.dabs->total);
-    draw.paper = renderer->scale > 0 ? static_cast<float>(1.0 / renderer->scale) : 1.0f;
-    draw.paperX = static_cast<float>(state.paper[0]);
-    draw.paperY = static_cast<float>(state.paper[1]);
+    draw.paper = paperScale(renderer, state.paper);
+    draw.paperX = static_cast<float>(state.paper.x);
+    draw.paperY = static_cast<float>(state.paper.y);
     draw.roundedClip = state.roundedClip;
     draw.coverage = state.coverageClip;
     draw.blend = blend;
@@ -9922,14 +9941,14 @@ static const FillPathRecord* chunkClipPath(MetalRenderer* renderer, const PathCl
 
 static void pushExpandMatrix(ExpandState& state) {
     memcpy(state.matrixStack[state.matrixDepth], state.matrix, sizeof(state.matrix));
-    memcpy(state.paperStack[state.matrixDepth], state.paper, sizeof(state.paper));
+    state.paperStack[state.matrixDepth] = state.paper;
     ++state.matrixDepth;
 }
 
 static void popExpandMatrix(ExpandState& state) {
     --state.matrixDepth;
     memcpy(state.matrix, state.matrixStack[state.matrixDepth], sizeof(state.matrix));
-    memcpy(state.paper, state.paperStack[state.matrixDepth], sizeof(state.paper));
+    state.paper = state.paperStack[state.matrixDepth];
 }
 
 static bool pushExpandClip(ExpandState& state) {
@@ -10538,8 +10557,9 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
             pushExpandMatrix(state);
             fillMultiply(state.matrix, matrix, state.matrix);
             if (kind == PacketOpPushContentTransform) {
-                state.paper[0] = std::round(state.matrix[4] * state.renderer->scale);
-                state.paper[1] = std::round(state.matrix[5] * state.renderer->scale);
+                state.paper.x = std::round(state.matrix[4] * state.renderer->scale);
+                state.paper.y = std::round(state.matrix[5] * state.renderer->scale);
+                state.paper.octave = paperOctave(state.matrix);
             }
         } else if (kind == PacketOpPopTransform) {
             if (state.matrixOverflow) {

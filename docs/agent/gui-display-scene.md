@@ -138,12 +138,13 @@ rounded to device pixels, when the tile displays at 1:1, and through the area sa
 
 A paint's `paper` coordinate is in points. Inside a box's own painting under its
 `content-transform`, it is measured from the device position of the content origin, rounded to a
-whole device pixel, so grain pans with the content. A tile frame measures from the tile's content
-origin, so tiles match direct drawing at the settle level; between octave levels, grain is drawn
-at the level's scale and resampled. Everything else measures from the surface origin, including
-child boxes, which paint outside their parent's content transform. Grain stays screen-sized, so
-while directly drawn content zooms it slides with the content origin. The CoreGraphics fallback
-measures from its canvas.
+whole device pixel, and scaled by 2^ℓ / z, where z is the content scale and ℓ = round(log2 z) is
+its octave level. Grain therefore follows the content while panning and zooming: within an octave
+it grows and shrinks with the content, up to 1.41× either way, and it is replaced when the zoom
+crosses into the next octave. A tile frame applies the same rule to its own scale, so an octave
+tile draws grain at its level's size and a settle tile draws what direct drawing does. Everything
+else measures from the surface origin at screen size, including child boxes, which paint outside
+their parent's content transform. The CoreGraphics fallback measures from its canvas.
 
 **Wants and rendering.** Encoding lists the tiles it wants, in order:
 1. the visible tiles, nearest the viewport center first;
