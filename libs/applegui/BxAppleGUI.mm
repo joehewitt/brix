@@ -10170,6 +10170,28 @@ brixGuiTextInputSetFont(void* ptr, const char* family, double size, double weigh
         }
     }
     [input.control setFont:font];
+    NSText* editor = [input.control currentEditor];
+    if ([editor isKindOfClass:[NSTextView class]]) {
+        NSTextView* view = static_cast<NSTextView*>(editor);
+        [view setFont:font];
+        NSMutableDictionary* typing = [[view typingAttributes] mutableCopy] ?: [NSMutableDictionary dictionary];
+        [typing setObject:font forKey:NSFontAttributeName];
+        [view setTypingAttributes:typing];
+        if (![[input.control cell] wraps]) {
+            if ([view layoutManager] && [view textContainer]) {
+                [[view layoutManager] ensureLayoutForTextContainer:[view textContainer]];
+            }
+            NSView* holder = [view superview];
+            if ([holder isKindOfClass:[NSClipView class]]) {
+                NSClipView* clip = static_cast<NSClipView*>(holder);
+                NSPoint origin = [clip bounds].origin;
+                if (origin.x > 0) {
+                    [clip scrollToPoint:NSMakePoint(0, origin.y)];
+                }
+            }
+            [view scrollRangeToVisible:[view selectedRange]];
+        }
+    }
     [input applyCellLineMetrics];
 }
 
