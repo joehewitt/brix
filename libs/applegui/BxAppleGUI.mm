@@ -1148,6 +1148,7 @@ guiReceiveMoveNotification(BxGuiWindowHost* guiWindow) {
 @property(nonatomic, assign) NSRange pendingSelection;
 @property(nonatomic, assign) uint32_t passedKeys;
 @property(nonatomic, assign) uint32_t maxLength;
+@property(nonatomic, assign) BOOL acceptsNewlines;
 @property(nonatomic, assign) double lineHeight;
 @property(nonatomic, assign) double lineSpacing;
 @property(nonatomic, assign) double textTopInset;
@@ -4525,7 +4526,8 @@ guiPresentCanvas(
     if (!(self.passedKeys & 4) && [[control cell] wraps] &&
         (commandSelector == @selector(insertNewlineIgnoringFieldEditor:) ||
          (commandSelector == @selector(insertNewline:) &&
-          ([event modifierFlags] & (NSEventModifierFlagShift | NSEventModifierFlagOption))))) {
+          (self.acceptsNewlines ||
+           ([event modifierFlags] & (NSEventModifierFlagShift | NSEventModifierFlagOption)))))) {
         [textView insertNewlineIgnoringFieldEditor:self];
         return YES;
     }
@@ -6834,7 +6836,7 @@ brixGuiWindowShow(void* ptr) {
         return;
     }
     NSWindow* window = guiWindow.window;
-    if (guiWindow.panel) {
+    if (guiWindow.panel || [NSApp activationPolicy] == NSApplicationActivationPolicyAccessory) {
         [NSApp activateIgnoringOtherApps:YES];
     }
     [window makeKeyAndOrderFront:nil];
@@ -10639,6 +10641,15 @@ brixGuiTextInputSetWraps(void* ptr, bool wraps) {
 }
 
 extern "C" void
+brixGuiTextInputSetAcceptsNewlines(void* ptr, bool acceptsNewlines) {
+    BxGuiTextInputHost* input = getTextInput(ptr);
+    if (!input) {
+        return;
+    }
+    input.acceptsNewlines = acceptsNewlines ? YES : NO;
+}
+
+extern "C" void
 brixGuiTextInputSetSelection(void* ptr, const char* before, const char* selected) {
     BxGuiTextInputHost* input = getTextInput(ptr);
     if (!input || !input.control) {
@@ -10731,6 +10742,7 @@ brixGuiTextInputReplaceText(void* ptr, const char* text) {
         [editor setSelectedRange:NSMakeRange([value length], 0)];
     } else {
         [input.control setStringValue:value];
+        [input applyCellLineMetrics];
     }
 }
 

@@ -554,6 +554,7 @@ extern "C" double brixGuiTextInputGetFittingWidth(void* input);
 extern "C" double brixGuiTextInputGetFittingHeight(void* input);
 extern "C" double brixGuiTextInputGetFittingHeightForWidth(void* input, double width);
 extern "C" void brixGuiTextInputSetWraps(void* input, bool wraps);
+extern "C" void brixGuiTextInputSetAcceptsNewlines(void* input, bool acceptsNewlines);
 extern "C" void brixGuiTextInputSetSelection(void* input, const char* before, const char* selected);
 extern "C" void brixGuiTextInputSetPassedKeys(void* input, uint32_t keys);
 extern "C" void brixGuiTextInputSetLineMetrics(void* input, double lineHeight, double lineSpacing);
