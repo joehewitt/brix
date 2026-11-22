@@ -57,6 +57,7 @@ extern "C" int NSExtensionMain(int argc, const char** argv);
 
 @property(nonatomic, weak) BxGuiWindowHost* guiWindow;
 @property(nonatomic, strong) NSTextView* guiFieldEditor;
+@property(nonatomic, assign) BOOL inSendEvent;
 
 @end
 
@@ -1219,6 +1220,7 @@ typedef NSTextField<BxGuiTextControl> BxGuiTextControlField;
 @property(nonatomic, weak) BxGuiWindowHost* ownerHost;
 @property(nonatomic, strong) NSTextView* guiFieldEditor;
 @property(nonatomic, assign) BOOL isUnconstrained;
+@property(nonatomic, assign) BOOL inSendEvent;
 
 @end
 
@@ -2454,7 +2456,13 @@ guiResponderEditsTextInput(NSResponder* responder) {
     if ([super performKeyEquivalent:event]) {
         return YES;
     }
-    return [self.guiWindow matchesCommandShortcut:event];
+    if ([self.guiWindow matchesCommandShortcut:event]) {
+        if (!self.inSendEvent) {
+            [self.guiWindow handleKeyEvent:event];
+        }
+        return YES;
+    }
+    return NO;
 }
 
 - (void)brixZoomIn:(id)sender {
@@ -2500,7 +2508,10 @@ guiResponderEditsTextInput(NSResponder* responder) {
     if ([event type] == NSEventTypeKeyUp) {
         [self.guiWindow handleKeyReleaseEvent:event];
     }
+    BOOL previousInSendEvent = self.inSendEvent;
+    self.inSendEvent = YES;
     [super sendEvent:event];
+    self.inSendEvent = previousInSendEvent;
 }
 
 - (void)selectKeyViewFollowingView:(NSView*)view {
@@ -3718,6 +3729,10 @@ guiPresentCanvas(
 
 - (BOOL)matchesCommandShortcut:(NSEvent*)event {
     if ([event type] != NSEventTypeKeyDown || self.closed || commandShortcuts.empty()) {
+        return NO;
+    }
+    NSResponder* responder = [([event window] ?: [self effectiveWindow]) firstResponder];
+    if (guiResponderPeerOwnsKeys(responder)) {
         return NO;
     }
     uint64_t modifiers = guiModifierBits([event modifierFlags]) & 15;
@@ -5147,7 +5162,13 @@ guiTextControlPerformKeyEquivalent(NSTextField* control, NSEvent* event) {
     if ([super performKeyEquivalent:event]) {
         return YES;
     }
-    return [self.ownerHost matchesCommandShortcut:event];
+    if ([self.ownerHost matchesCommandShortcut:event]) {
+        if (!self.inSendEvent) {
+            [self.ownerHost handleKeyEvent:event];
+        }
+        return YES;
+    }
+    return NO;
 }
 
 - (void)sendEvent:(NSEvent*)event {
@@ -5180,7 +5201,10 @@ guiTextControlPerformKeyEquivalent(NSTextField* control, NSEvent* event) {
     if (type == NSEventTypeKeyUp) {
         [owner handleKeyReleaseEvent:event];
     }
+    BOOL previousInSendEvent = self.inSendEvent;
+    self.inSendEvent = YES;
     [super sendEvent:event];
+    self.inSendEvent = previousInSendEvent;
 }
 
 - (void)selectKeyViewFollowingView:(NSView*)view {
