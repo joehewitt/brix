@@ -1,4 +1,5 @@
 (import /ai)
+(import /ai/antigravity)
 (import /ai/claude)
 (import /ai/codex)
 (import /ai/imaging)
@@ -25,13 +26,25 @@
 (type + AIChatAgent (is Union)
   (variant claude)
   (variant codex)
+  (variant antigravity)
   (variant openai)
 )
 
 (type + AIChatVariables (is (fn-type (? (map String String)))))
 
 (type + AIChatSetup (is Tuple)
-  (prop + agents _ (= (call (of List AIChatAgent) (list (. AIChatAgent claude) (. AIChatAgent codex) (. AIChatAgent openai)))))
+  (prop + agents _
+    (=
+      (call (of List AIChatAgent)
+        (block
+          (item (. AIChatAgent claude))
+          (item (. AIChatAgent codex))
+          (item (. AIChatAgent antigravity))
+          (item (. AIChatAgent openai))
+        )
+      )
+    )
+  )
   (prop + working-directory (? String) (= null))
   (prop + instructions (? String) (= null))
   (prop + suffix _ (= ""))
@@ -41,7 +54,10 @@
   (prop + toolkits _ (= (call (of List AIToolkit))))
   (prop + variables (? AIChatVariables) (= null))
   (prop + claude-model _ (= claude-default-model))
+  (prop + antigravity-model _ (= antigravity-default-model))
   (prop + mcp-servers _ (= (call (of List ClaudeMCPServer))))
+  (prop + codex-mcp-servers _ (= (call (of List CodexMCPServer))))
+  (prop + antigravity-mcp-servers _ (= (call (of List AntigravityMCPServer))))
   (prop + permission-mode _ (= "auto"))
   (prop + has-task-tools _ (= true))
   (prop + sandbox _ (= "workspace-write"))
@@ -51,6 +67,7 @@
 (type + AIChatAccounts
   (prop + claude AIAccess)
   (prop + codex AIAccess)
+  (prop + antigravity AIAccess)
   (prop + openai AIAccess)
   (prop + titler OpenAIResponses)
   (prop + painter OpenAIImages)
@@ -62,6 +79,7 @@
     (let store (call AIAccessStore path))
     (= claude (call AIAccess store "claude-code" (. AIAccessKind approval) "Claude Code" "claude auth login"))
     (= codex (call AIAccess store "codex" (. AIAccessKind approval) "Codex" "codex login"))
+    (= antigravity (call AIAccess store "antigravity" (. AIAccessKind approval) "Antigravity" "agy acp --login"))
     (= openai (call AIAccess store "openai" (. AIAccessKind api-key) "OpenAI" (:variable "OPENAI_API_KEY")))
     (let key (?? (. openai key) ""))
     (let base (call env "OPENAI_BASE_URL"))
@@ -163,6 +181,24 @@
         )
       )
     )
+    (case (. AIChatAgent antigravity)
+      (let antigravity (call ai-chat-antigravity setup hosted))
+      (return
+        (call AIChatService
+          (block
+            (arg (str "antigravity" suffix))
+            (arg "Antigravity")
+            (arg antigravity)
+            (arg (. setup antigravity-model))
+            (:instructions (. setup instructions))
+            (:namer (call antigravity-chat-namer antigravity))
+            (:access (. accounts antigravity))
+            (:icon (. AIServiceIcon antigravity))
+            (:tool-access (. accounts openai))
+          )
+        )
+      )
+    )
     (case (. AIChatAgent openai)
       (let painting
         (call AIImagingProvider
@@ -220,6 +256,22 @@
       (:effort (?? (. setup effort) codex-default-effort))
       (:reasoning-summary ai-codex-summary)
       (:variables (. setup variables))
+      (:mcp-servers (. setup codex-mcp-servers))
+      (:toolkits toolkits)
+    )
+  )
+)
+
+(fn-expr _ ai-chat-antigravity Antigravity
+  (param setup AIChatSetup)
+  (param toolkits (list AIToolkit))
+  (call Antigravity
+    (block
+      (:working-directory (. setup working-directory))
+      (:permission-mode (. setup permission-mode))
+      (:effort (?? (. setup effort) antigravity-default-effort))
+      (:variables (. setup variables))
+      (:mcp-servers (. setup antigravity-mcp-servers))
       (:toolkits toolkits)
     )
   )

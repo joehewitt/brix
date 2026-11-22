@@ -125,6 +125,7 @@
   (prop + glide-motion Motion (= (call spring 320ms)))
   (prop + sticky-inset Length (= 0))
   (prop + top-inset Length (= 0))
+  (prop + bottom-inset Length (= 0))
   (prop + virtual-extent-x VirtualExtent)
   (prop + virtual-extent-y VirtualExtent)
   (prop + virtual-scroll _ (=> (call VirtualPoint (call virtual-floor scroll-x) (call virtual-floor (- scroll-y top-inset)))))
@@ -165,7 +166,7 @@
   (prop _ glided-size Dimensions)
   (blank)
   (depends bindings-changed source virtual-layout overscan overscan-rows retention anchors-end)
-  (depends bindings-changed sticky-inset top-inset)
+  (depends bindings-changed sticky-inset top-inset bottom-inset)
   (blank)
   (rule This
     (= overflow-x (. ScrollOverflow auto))
@@ -456,7 +457,7 @@
     (let top (call virtual-length (. placed y)))
     (return-if (call max 0 (- top inset)) (if (== room null)))
     (blank)
-    (let bottom (+ (call virtual-length (+ (. placed y) (. placed height))) top-inset))
+    (let bottom (+ (call virtual-length (+ (. placed y) (. placed height))) top-inset bottom-inset))
     (return (call max 0 (call min (- top inset) (- (+ bottom room) (. content-bounds height)))))
   )
   (fn-do _ address-glide-point (? Point)
@@ -492,7 +493,7 @@
     (blank)
     (let header-margin (call (. (!! virtual-layout) sticky-margin) address (. (!! source) domain) (. recycler window)))
     (let margin (+ header-margin (call virtual-ceil sticky-inset)))
-    (let covered (call virtual-ceil top-inset))
+    (let covered (call virtual-ceil (+ top-inset bottom-inset)))
     (return (call VirtualRect (. natural x) (- (. natural y) margin) (. natural width) (+ (. natural height) margin covered)))
   )
   (fn-do _ reserve-through _
@@ -510,7 +511,7 @@
     )
   )
   (fn-do _ settle-reserved-height _
-    (let natural (call virtual-inner-length (. virtual-extent-y known) (. content-bounds height) top-inset))
+    (let natural (call virtual-inner-length (. virtual-extent-y known) (. content-bounds height) (+ top-inset bottom-inset)))
     (if (<= reserved-height natural)
       (= reserved-height 0)
     )
@@ -542,7 +543,7 @@
       (call Dimensions
         (block
           (arg (call virtual-length (. natural-window known-width)))
-          (arg (+ (call virtual-length (. natural-window known-height)) top-inset))
+          (arg (+ (call virtual-length (. natural-window known-height)) top-inset bottom-inset))
         )
       )
     )
@@ -708,7 +709,7 @@
         (= anchor-y start-y)
       )
       (if pins-end
-        (= target-y (call gui-safe-span (- (+ (call virtual-length (. extent-y known)) top-inset) (. content height))))
+        (= target-y (call gui-safe-span (- (+ (call virtual-length (. extent-y known)) top-inset bottom-inset) (. content height))))
       )
     )
     (call arrange-virtual-roots content)
@@ -940,7 +941,7 @@
         (call glide-size-from last motion)
       )
       (let limit (* (call virtual-ceil (. content height)) virtual-glide-screens))
-      (let natural (- (. (call natural-extent) height) top-inset))
+      (let natural (- (. (call natural-extent) height) top-inset bottom-inset))
       (if (<= natural 0)
         (= glide-reach limit)
         (else
@@ -1159,7 +1160,7 @@
     (param alignment ScrollAlignment (= (. ScrollAlignment nearest)))
     (param margin Insets (= (call Insets 0 0 0 0)))
     (param cause ScrollCause (= (. ScrollCause ensure-visible)))
-    (let clear (call Insets (+ (. margin top) top-inset) (. margin right) (. margin bottom) (. margin left)))
+    (let clear (call Insets (+ (. margin top) top-inset) (. margin right) (+ (. margin bottom) bottom-inset) (. margin left)))
     (return (call (. super scroll-bounds-visible) rect alignment clear cause))
   )
   (fn-expr + scroll-indicator-track-bounds _

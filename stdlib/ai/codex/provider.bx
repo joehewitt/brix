@@ -24,6 +24,7 @@
   (prop + reasoning-summary (? String))
   (prop + is-persistent Bool)
   (prop + variables (? CodexVariables))
+  (prop + mcp-servers (list CodexMCPServer))
   (prop + toolkits (list AIToolkit))
   (prop + running Size)
   (blank)
@@ -38,6 +39,7 @@
     (param reasoning-summary (? String) (= null))
     (param is-persistent _ (= true))
     (param variables (? CodexVariables) (= null))
+    (param mcp-servers _ (= (call (of List CodexMCPServer))))
     (param toolkits _ (= (call (of List AIToolkit))))
     (call super)
   )
@@ -113,6 +115,7 @@
         )
       )
     )
+    (let servers (call codex-mcp-servers-for mcp-servers (. request chat-id)))
     (let settings
       (call codex-thread-settings
         (block
@@ -124,7 +127,7 @@
         )
       )
     )
-    (let key (call to-json (as settings JSON)))
+    (let key (str (call to-json (as settings JSON)) "\n" (call (. "\n" join) (call codex-mcp-arguments servers))))
     (let turning (call codex-turn-settings effort reasoning-summary (. request response-schema)))
     (let live (call reusable plan key))
     (return-if (call (. live ask) input turning request) (if live))
@@ -133,7 +136,7 @@
     (let program (?? executable (call codex-executable (call codex-search-directories base))))
     (throw (call AIError (. AIErrorKind unknown) "Codex is not installed") (if (not program)))
     (blank)
-    (let process (call codex-process program working-directory base))
+    (let process (call codex-process program working-directory base servers))
     (let link
       (call CodexLink
         (block
@@ -631,9 +634,12 @@
   (param program String)
   (param directory (? String))
   (param base (? (map String String)))
+  (param mcp-servers (list CodexMCPServer) (= (call (of List CodexMCPServer))))
   (throw (call AIError (. AIErrorKind invalid-request) (str "Codex can't run in " directory " because it no longer exists")) (if (and directory (not (. (call Path directory 0) is-dir)))))
   (throw (call AIError (. AIErrorKind unknown) (str "Codex did not start: " failure)) (on-error (: failure Error)))
-  (return (call Process program (. ProcessStderr capture) (list "app-server") directory (call codex-environment base)))
+  (let args (list "app-server"))
+  (++= args (call codex-mcp-arguments mcp-servers))
+  (return (call Process program (. ProcessStderr capture) args directory (call codex-environment base)))
 )
 
 (fn-do _ codex-account-answer (? JSON) (?! Error)

@@ -295,12 +295,15 @@
   (prop + name String)
   (prop + url (? String))
   (prop + tools (list String))
+  (prop + headers (map String String) (= (call (of Map String String))))
+  (prop + chat-header (? String) (= null))
   (fn-expr + json (map String JSON) :get
     (case? url
       (call (of Map String JSON)
         (block
           (:type "http")
           (:url url)
+          (:headers? (only-if (call (of Map String JSON) (in (tuple ([] each 0) (as ([] each 1) JSON)) headers)) (if (> (. headers length) 0))))
         )
       )
     )
@@ -313,6 +316,27 @@
       )
     )
   )
+)
+
+(fn-do + claude-mcp-servers-for (list ClaudeMCPServer)
+  (param servers (list ClaudeMCPServer))
+  (param chat-id (? String))
+  (let resolved (call (of List ClaudeMCPServer)))
+  (for (in server servers)
+    (let header (. server chat-header))
+    (if (and header (> (. header length) 0) chat-id (> (. chat-id length) 0))
+      (let headers (call (of Map String String)))
+      (for (in (tuple key value) (. server headers))
+        (= ([] headers key) value)
+      )
+      (= ([] headers header) chat-id)
+      (+= resolved (call ClaudeMCPServer (. server name) (. server url) (. server tools) headers))
+      (else
+        (+= resolved server)
+      )
+    )
+  )
+  (return resolved)
 )
 
 (fn-expr + claude-arguments (list String)

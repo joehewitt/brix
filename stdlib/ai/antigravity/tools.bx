@@ -1,0 +1,149 @@
+(import ./wire)
+(import /ai/model)
+(import /ai/tasks)
+(import /data/json)
+(import /os/path)
+(import /stream/aggregate)
+
+(fn-expr + antigravity-tool-title (? String)
+  (param call AIToolCallPart)
+  (case? (and title (> (. title length) 0))
+    title
+  )
+  (default
+    (match (. call tool-name)
+      (case= "run_command"
+        (call antigravity-first-line (call ai-argument arguments "CommandLine"))
+      )
+      (case= "read_file"
+        (str "Read " (?? (call antigravity-file-name (call ai-argument arguments "Path")) "a file"))
+      )
+      (case= "edit_file"
+        (str "Edit " (?? (call antigravity-file-name (call ai-argument arguments "Path")) "a file"))
+      )
+      (case= "write_file"
+        (str "Write " (?? (call antigravity-file-name (call ai-argument arguments "Path")) "a file"))
+      )
+      (case= "search_web"
+        (str "Search " (?? (call ai-argument arguments "query") "the web"))
+      )
+      (default
+        (call antigravity-mcp-title (. call tool-name))
+      )
+    )
+  )
+  (where
+    (lazy arguments (. call arguments))
+    (lazy title (call ai-argument arguments antigravity-title-field))
+  )
+)
+
+(fn-expr + antigravity-tool-kind AIToolKind
+  (param call AIToolCallPart)
+  (match kind
+    (case= "read"
+      (. AIToolKind read)
+    )
+    (case= "edit"
+      (. AIToolKind edit)
+    )
+    (case= "delete"
+      (. AIToolKind edit)
+    )
+    (case= "move"
+      (. AIToolKind edit)
+    )
+    (case= "search"
+      (. AIToolKind search)
+    )
+    (case= "execute"
+      (. AIToolKind command)
+    )
+    (case= "fetch"
+      (. AIToolKind fetch)
+    )
+    (default
+      (call antigravity-name-kind (. call tool-name))
+    )
+  )
+  (where
+    (lazy kind (call ai-argument (. call arguments) antigravity-kind-field))
+  )
+)
+
+(fn-expr + antigravity-tool-input (? String)
+  (param call AIToolCallPart)
+  (??
+    (call ai-argument arguments "CommandLine")
+    (call ai-argument arguments "command")
+    (call ai-argument arguments "Path")
+    (call ai-argument arguments "path")
+    (call ai-argument arguments "query")
+    (call ai-argument arguments "url")
+    (call ai-argument arguments antigravity-title-field)
+  )
+  (where
+    (lazy arguments (. call arguments))
+  )
+)
+
+(fn-expr _ antigravity-name-kind AIToolKind
+  (param name String)
+  (match name
+    (case= "run_command"
+      (. AIToolKind command)
+    )
+    (case= "read_file"
+      (. AIToolKind read)
+    )
+    (case= "write_file"
+      (. AIToolKind write)
+    )
+    (case= "edit_file"
+      (. AIToolKind edit)
+    )
+    (case= "search_web"
+      (. AIToolKind web-search)
+    )
+    (case= "invoke_subagent"
+      (. AIToolKind agent)
+    )
+    (default
+      (. AIToolKind other)
+    )
+  )
+)
+
+(fn-expr _ antigravity-file-name (? String)
+  (param path (? String))
+  (only-if (. (call Path path 0) name) (if path))
+)
+
+(fn-expr _ antigravity-first-line (? String)
+  (param text (? String))
+  (case? (== text null)
+    null
+  )
+  (case? (!= found null)
+    (str (call (. ([] text (..< 0 found)) trim)) " …")
+  )
+  (default
+    (call (. text trim))
+  )
+  (where
+    (lazy found (only-if (call (. text find) "\n") (if text)))
+  )
+)
+
+(fn-expr _ antigravity-mcp-title String
+  (param name String)
+  (case? (and (>= (. parts length) 3) (== ([] parts 0) "mcp"))
+    (str ([] parts 1) ": " ([] parts 2))
+  )
+  (default
+    name
+  )
+  (where
+    (lazy parts (call List (call (. name split) "_")))
+  )
+)
