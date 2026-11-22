@@ -1,0 +1,100 @@
+; benchmark.meta description: Zooms an ImageZoomView of a generated 4000 x 3000 image from fit in past its pixel grid and back by command scrolls, panning between, in a real 1440 x 900 window at scale 2, reporting each committed frame's main-thread phases, GPU time and scripted input latency.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: gui-window
+(blank)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/image)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /gui)
+(import /gui/bench/fixtures/window-frame-fixture)
+(import /math)
+(import /time/timer)
+(blank)
+(prop _ image-bench-width I32 (= 4000))
+(prop _ image-bench-height I32 (= 3000))
+(prop _ image-bench-settle-steps Size (= 40))
+(prop _ image-bench-segment-steps Size (= 90))
+(prop _ image-bench-tail-steps Size (= 30))
+(prop _ image-bench-zoom-delta F64 (= 3.9220713))
+(prop _ image-bench-pan _ (= (call Point 6 2)))
+(prop _ image-bench-command U64 (= 8))
+(prop _ image-bench-center _ (= (call Point 720 450)))
+
+(main
+  (<> App
+    (<> ImageBenchWindow
+      (<> ImageZoomView (• absolute) (• cover .parent)
+        (= image (call image-bench-picture))
+      )
+    )
+  )
+)
+
+(type _ ImageBenchWindow (is Window)
+  (prop _ log _ (:= (call WindowBenchLog this)))
+  (prop _ ticks Size)
+  (prop _ ticking _
+    (machine
+      (state live
+        (for (on tick frames)
+          (+= ticks 1)
+        )
+      )
+    )
+  )
+  (fn-do + open _
+    (= state-key null)
+    (= size window-bench-size)
+    (= title "Image Zoom")
+    (call (. super open))
+    (call (. log start))
+  )
+  (fn-do + end-frame _
+    (param committed Bool)
+    (call (. super end-frame) committed)
+    (call drive committed)
+  )
+  (fn-do _ drive _
+    (param committed Bool)
+    (call (. log after-frame) committed)
+    (let step (. log steps))
+    (let last (+ image-bench-settle-steps (* image-bench-segment-steps 3)))
+    (if (== step (+ last image-bench-tail-steps))
+      (call (. log finish) "gui/window-image-zoom" (as step Size))
+      (return)
+    )
+    (return-if (if (or (< step image-bench-settle-steps) (>= step last))))
+    (blank)
+    (let started (call monotonic-time-nanoseconds))
+    (let moved (- step image-bench-settle-steps))
+    (let segment (/ moved image-bench-segment-steps))
+    (let within (% moved image-bench-segment-steps))
+    (let ending (== within (- image-bench-segment-steps 1)))
+    (let phase (if-expr (== within 0) (. ScrollPhase began) (if-expr ending (. ScrollPhase ended) (. ScrollPhase changed))))
+    (match segment
+      (case= 1
+        (call (. log scroll) image-bench-center (if-expr ending (call Point 0 0) image-bench-pan) phase)
+      )
+      (default
+        (let delta (if-expr (== segment 0) (- image-bench-zoom-delta) image-bench-zoom-delta))
+        (call (. log scroll) image-bench-center (call Point 0 (if-expr ending 0.0 delta)) phase image-bench-command)
+      )
+    )
+    (call (. log timed) started)
+  )
+)
+
+(fn-do _ image-bench-picture Image
+  (let surface (call RasterCanvas image-bench-width image-bench-height 1 (call RGBA 0.92 0.9 0.85 1)))
+  (= (. surface stroke-color) null)
+  (for (in row (..< 0 30))
+    (for (in column (..< 0 40))
+      (let tone (/ (as (% (+ (* row 7) (* column 3)) 16) F64) 16))
+      (= (. surface fill-color) (call RGBA (+ 0.2 (* tone 0.6)) (- 0.8 (* tone 0.5)) (+ 0.3 (* tone 0.4)) 1))
+      (call (. surface rect) (call Rect (+ 6 (* (as column F64) 100)) (+ 6 (* (as row F64) 100)) 88 88))
+    )
+  )
+  (return (call Image surface))
+)
