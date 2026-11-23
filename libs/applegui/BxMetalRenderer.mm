@@ -17618,9 +17618,18 @@ extern "C" bool brixGuiMetalPathEnd(void* pointer) {
             renderer->fillDeadSegments += path.segmentCount;
         }
     }
-    renderer->fillBuild.resident = true;
-    record = std::move(renderer->fillBuild);
-    renderer->fillBuild = FillGeometryRecord();
+    FillGeometryRecord& build = renderer->fillBuild;
+    record.generation = build.generation;
+    record.resident = true;
+    record.hasBrushes = build.hasBrushes;
+    record.paths = build.paths;
+    record.spans = build.spans;
+    record.extras = std::move(build.extras);
+    build.generation = 0;
+    build.hasBrushes = false;
+    build.paths.clear();
+    build.spans.clear();
+    build.extras.clear();
     renderer->fillBuilding = false;
     return true;
 }
