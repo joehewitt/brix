@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import deps
 from checks import gc_allocation_abi
-from common import BUILD, ROOT, RUNTIME_CONFIG, Failure, built_path, is_within, run_main, say, shown, xcrun
+from common import (BUILD, ROOT, RUNTIME_CONFIG, RUNTIME_INPUTS_NAME, Failure, built_path, is_within, run_main, say,
+                    shown, xcrun)
 
 CONFIG = RUNTIME_CONFIG
 HOST_FAMILY = 'macos'
@@ -29,6 +30,7 @@ TRUE_WORDS = ('1', 'true', 'yes', 'on')
 FALSE_WORDS = ('', '0', 'false', 'no', 'off')
 DEPFILE_WORD = re.compile(r'(?:\\.|[^\s\\])+')
 DEPFILE_ESCAPE = re.compile(r'\\(.)')
+NANOSECONDS = 1000000000
 
 
 def main(arguments):
@@ -99,15 +101,20 @@ class Project:
         self.excluded = set(override.get('exclude', []))
 
     def sources(self):
+        return self.walk()[1]
+
+    def walk(self):
+        directories = []
         found = []
         for directory, names, file_names in os.walk(self.path):
+            directories.append(directory)
             names[:] = sorted(name for name in names if not name.startswith('.') and name != 'tests')
             for file_name in file_names:
                 if file_name.startswith('.') or file_name in self.excluded:
                     continue
                 if os.path.splitext(file_name)[1] in C_EXTENSIONS + CXX_EXTENSIONS:
                     found.append(os.path.join(directory, file_name))
-        return sorted(found)
+        return directories, sorted(found)
 
     def object_path(self, source):
         return os.path.splitext(os.path.join(self.directory, os.path.relpath(source, self.path)))[0] + '.o'
@@ -141,16 +148,38 @@ class Build:
         self.compiler = config['toolchain']['cCompiler']
 
     def build(self):
-        started = time.time()
+        started = time.time_ns()
         self.prepare()
         flags = self.flags()
         identity = self.toolchain_identity()
         rebuilt = sum(1 for project in self.projects if self.build_project(project, flags, identity))
+        self.record_inputs(started)
         if rebuilt > 1:
-            say('runtime  %d of %d libraries rebuilt  %.1fs' % (rebuilt, len(self.projects), time.time() - started))
+            say('runtime  %d of %d libraries rebuilt  %.1fs'
+                % (rebuilt, len(self.projects), (time.time_ns() - started) / NANOSECONDS))
+
+    def record_inputs(self, started):
+        paths = {CONFIG, os.path.realpath(__file__)}
+        for project in self.projects:
+            directories, sources = project.walk()
+            paths.update(directories)
+            for source in sources:
+                inputs = depfile_inputs(project.object_path(source) + '.d') or []
+                paths.update([source] + [os.path.join(ROOT, path) for path in inputs])
+        entries = [[path, input_time(path, started)] for path in sorted(paths)]
+        entries += [[project.archive, os.stat(project.archive).st_mtime_ns] for project in self.projects]
+        path = os.path.join(self.root, RUNTIME_INPUTS_NAME)
+        temporary = '%s.tmp-%d' % (path, os.getpid())
+        with open(temporary, 'w') as file:
+            json.dump(entries, file)
+        os.replace(temporary, path)
 
     def clean(self):
         removed = 0
+        inputs = os.path.join(self.root, RUNTIME_INPUTS_NAME)
+        if os.path.isfile(inputs):
+            os.remove(inputs)
+            removed += 1
         for project in self.projects:
             paths = [project.archive, project.archive + '.cmd']
             for source in project.sources():
@@ -340,6 +369,11 @@ class Build:
         if value in FALSE_WORDS:
             return False
         raise Failure('%s must be 0 or 1' % name)
+
+
+def input_time(path, started):
+    modified = os.stat(path).st_mtime_ns
+    return modified if modified < started else 0
 
 
 def depfile_inputs(path):

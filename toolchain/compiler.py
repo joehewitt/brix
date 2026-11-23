@@ -7,9 +7,12 @@ import tempfile
 import time
 
 import launcher
-from common import BUILD, ROOT, RUNTIME_CONFIG, Failure, build_environment, built_path, file_digest, lock, xcrun
+from common import (BUILD, ROOT, RUNTIME_CONFIG, RUNTIME_INPUTS_NAME, Failure, build_environment, built_path,
+                    file_digest, lock, xcrun)
 
 MANIFEST = os.path.join(ROOT, launcher.MANIFEST_NAME)
+RUNTIME_INPUTS = os.path.join(BUILD, RUNTIME_INPUTS_NAME)
+RUNTIME_LOCK = os.path.join(BUILD, 'runtime.lock')
 TOOLS = os.path.join(BUILD, 'tools')
 COMPILER = os.path.join(TOOLS, 'brix')
 OBJECT = COMPILER + '.o'
@@ -41,6 +44,7 @@ def main(arguments):
     os.environ.setdefault('BRIX_BUILD_PATH', BUILD)
     if arguments and arguments[0] in TOOL_SOURCES:
         ensure_compiler(seed_name())
+        ensure_runtime()
         tool = ensure_tool(arguments[0])
         os.execv(tool, [tool] + arguments[1:])
     options = arguments[:arguments.index('--')] if '--' in arguments else arguments
@@ -50,6 +54,7 @@ def main(arguments):
         arguments = arguments[:position] + arguments[position + 1:]
     selectors, arguments = compiler_probes(arguments)
     ensure_compiler(seed_name())
+    ensure_runtime()
     if selectors is None:
         if build_only:
             print(COMPILER)
@@ -276,17 +281,34 @@ def run(command, environment, label='Building the compiler failed'):
     return result.stdout
 
 
+def ensure_runtime():
+    if not runtime_current():
+        build_runtime(compiler_environment())
+
+
+def runtime_current():
+    try:
+        with open(RUNTIME_INPUTS) as file:
+            entries = json.load(file)
+        return all(os.stat(path).st_mtime_ns == modified for path, modified in entries)
+    except (OSError, TypeError, ValueError):
+        return False
+
+
 def build_runtime(environment):
-    result = subprocess.run(
-        [sys.executable, RUNTIME_BUILDER, 'build', '--build', BUILD],
-        cwd=ROOT,
-        env=environment,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-    )
+    os.makedirs(BUILD, exist_ok=True)
+    with open(RUNTIME_LOCK, 'w') as file:
+        lock(file)
+        result = subprocess.run(
+            [sys.executable, RUNTIME_BUILDER, 'build', '--build', BUILD],
+            cwd=ROOT,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
     if result.returncode != 0:
-        fail(result.stderr.rstrip('\n'))
+        raise Failure('Building the runtime failed:\n%s' % result.stderr.rstrip('\n'))
 
 
 def compiler_environment():

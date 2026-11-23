@@ -8,6 +8,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 TMP = os.path.join(ROOT, '.tmp')
 BUILD = os.path.join(TMP, 'build')
 RUNTIME_CONFIG = os.path.join(ROOT, 'libs', 'build.json')
+RUNTIME_INPUTS_NAME = 'runtime.inputs.json'
 BRIX_HOME = os.path.realpath(os.environ.get('BRIX_HOME') or os.path.expanduser('~/.brix'))
 CHUNK_SIZE = 1 << 20
 LOG_TAIL = 20
