@@ -9694,6 +9694,52 @@ brixGuiPathDisplayName(const char* path) {
     return buffer.c_str();
 }
 
+static void*
+guiRenderNSImageToCanvas(NSImage* icon, double size, double scale) {
+    if (!icon || !std::isfinite(size) || size <= 0 || !std::isfinite(scale) || scale <= 0) {
+        return nullptr;
+    }
+    void* canvas = brixGraphicsCanvasCreateScaled(size, size, scale);
+    if (!canvas) {
+        return nullptr;
+    }
+    void* pixels = brixGraphicsCanvasGetPixelData(canvas);
+    int32_t pixelWidth = brixGraphicsCanvasGetPixelWidth(canvas);
+    int32_t pixelHeight = brixGraphicsCanvasGetPixelHeight(canvas);
+    uint64_t bytesPerRow = brixGraphicsCanvasGetBytesPerRow(canvas);
+    CGColorSpaceRef colorSpace = static_cast<CGColorSpaceRef>(brixGraphicsCanvasGetColorSpace(canvas));
+    if (!pixels || pixelWidth <= 0 || pixelHeight <= 0 || !colorSpace) {
+        brixGraphicsCanvasRelease(canvas);
+        return nullptr;
+    }
+    CGContextRef context = CGBitmapContextCreate(
+        pixels,
+        static_cast<size_t>(pixelWidth),
+        static_cast<size_t>(pixelHeight),
+        8,
+        static_cast<size_t>(bytesPerRow),
+        colorSpace,
+        kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little
+    );
+    if (!context) {
+        brixGraphicsCanvasRelease(canvas);
+        return nullptr;
+    }
+    CGContextClearRect(context, CGRectMake(0, 0, pixelWidth, pixelHeight));
+    [NSGraphicsContext saveGraphicsState];
+    NSGraphicsContext* nsContext = [NSGraphicsContext graphicsContextWithCGContext:context flipped:NO];
+    [NSGraphicsContext setCurrentContext:nsContext];
+    [icon drawInRect:NSMakeRect(0, 0, pixelWidth, pixelHeight)
+            fromRect:NSZeroRect
+           operation:NSCompositingOperationCopy
+            fraction:1.0];
+    [nsContext flushGraphics];
+    [NSGraphicsContext restoreGraphicsState];
+    CGContextRelease(context);
+    brixGraphicsCanvasPixelsChanged(canvas);
+    return canvas;
+}
+
 extern "C" void*
 brixGuiPathIconCanvas(const char* path, double size, double scale) {
     if (!path || !path[0] || !std::isfinite(size) || size <= 0 || !std::isfinite(scale) || scale <= 0) {
@@ -9703,48 +9749,115 @@ brixGuiPathIconCanvas(const char* path, double size, double scale) {
     @autoreleasepool {
         NSString* filePath = stringFromUTF8(path);
         NSImage* icon = [[NSWorkspace sharedWorkspace] iconForFile:filePath];
-        if (!icon) {
+        return guiRenderNSImageToCanvas(icon, size, scale);
+    }
+}
+
+static id
+guiLookupKeyPath(NSDictionary* root, NSArray<NSString*>* parts) {
+    id current = root;
+    for (NSString* part in parts) {
+        if (![current isKindOfClass:[NSDictionary class]]) {
+            return nil;
+        }
+        current = [(NSDictionary*)current objectForKey:part];
+        if (!current) {
+            return nil;
+        }
+    }
+    return current;
+}
+
+static NSString*
+guiStringifyPlistValue(id value) {
+    if ([value isKindOfClass:[NSString class]]) {
+        return static_cast<NSString*>(value);
+    }
+    if ([value isKindOfClass:[NSNumber class]]) {
+        NSNumber* number = static_cast<NSNumber*>(value);
+        if (CFGetTypeID((__bridge CFTypeRef)number) == CFBooleanGetTypeID()) {
+            return [number boolValue] ? @"true" : @"false";
+        }
+        return [number stringValue];
+    }
+    if ([value isKindOfClass:[NSArray class]]) {
+        NSArray* array = static_cast<NSArray*>(value);
+        if ([array count] > 0) {
+            return guiStringifyPlistValue(array[0]);
+        }
+    }
+    return nil;
+}
+
+extern "C" const char*
+brixGuiBundleInfoValue(const char* bundlePath, const char* keyPath) {
+    thread_local std::string buffer;
+    buffer.clear();
+    if (!bundlePath || !bundlePath[0] || !keyPath || !keyPath[0]) {
+        return buffer.c_str();
+    }
+
+    @autoreleasepool {
+        NSBundle* bundle = [NSBundle bundleWithPath:stringFromUTF8(bundlePath)];
+        if (!bundle) {
+            return buffer.c_str();
+        }
+        NSArray<NSString*>* parts = [stringFromUTF8(keyPath) componentsSeparatedByString:@"."];
+        id value = guiLookupKeyPath([bundle localizedInfoDictionary], parts);
+        if (!value) {
+            value = guiLookupKeyPath([bundle infoDictionary], parts);
+        }
+        NSString* text = guiStringifyPlistValue(value);
+        if (text) {
+            const char* utf8 = [text UTF8String];
+            if (utf8) {
+                buffer.assign(utf8);
+            }
+        }
+    }
+    return buffer.c_str();
+}
+
+extern "C" const char*
+brixGuiBundleLocalizedString(const char* bundlePath, const char* key, const char* table) {
+    thread_local std::string buffer;
+    buffer.clear();
+    if (!bundlePath || !bundlePath[0] || !key || !key[0]) {
+        return buffer.c_str();
+    }
+
+    @autoreleasepool {
+        NSBundle* bundle = [NSBundle bundleWithPath:stringFromUTF8(bundlePath)];
+        if (!bundle) {
+            return buffer.c_str();
+        }
+        NSString* lookupKey = stringFromUTF8(key);
+        NSString* tableName = (table && table[0]) ? stringFromUTF8(table) : nil;
+        NSString* sentinel = @"__brix_missing_localized_string__";
+        NSString* resolved = [bundle localizedStringForKey:lookupKey value:sentinel table:tableName];
+        if (resolved && ![resolved isEqualToString:sentinel]) {
+            const char* utf8 = [resolved UTF8String];
+            if (utf8) {
+                buffer.assign(utf8);
+            }
+        }
+    }
+    return buffer.c_str();
+}
+
+extern "C" void*
+brixGuiBundleIconCanvas(const char* bundlePath, const char* iconName, double size, double scale) {
+    if (!bundlePath || !bundlePath[0] || !iconName || !iconName[0] || !std::isfinite(size) || size <= 0 || !std::isfinite(scale) || scale <= 0) {
+        return nullptr;
+    }
+
+    @autoreleasepool {
+        NSBundle* bundle = [NSBundle bundleWithPath:stringFromUTF8(bundlePath)];
+        if (!bundle) {
             return nullptr;
         }
-        void* canvas = brixGraphicsCanvasCreateScaled(size, size, scale);
-        if (!canvas) {
-            return nullptr;
-        }
-        void* pixels = brixGraphicsCanvasGetPixelData(canvas);
-        int32_t pixelWidth = brixGraphicsCanvasGetPixelWidth(canvas);
-        int32_t pixelHeight = brixGraphicsCanvasGetPixelHeight(canvas);
-        uint64_t bytesPerRow = brixGraphicsCanvasGetBytesPerRow(canvas);
-        CGColorSpaceRef colorSpace = static_cast<CGColorSpaceRef>(brixGraphicsCanvasGetColorSpace(canvas));
-        if (!pixels || pixelWidth <= 0 || pixelHeight <= 0 || !colorSpace) {
-            brixGraphicsCanvasRelease(canvas);
-            return nullptr;
-        }
-        CGContextRef context = CGBitmapContextCreate(
-            pixels,
-            static_cast<size_t>(pixelWidth),
-            static_cast<size_t>(pixelHeight),
-            8,
-            static_cast<size_t>(bytesPerRow),
-            colorSpace,
-            kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little
-        );
-        if (!context) {
-            brixGraphicsCanvasRelease(canvas);
-            return nullptr;
-        }
-        CGContextClearRect(context, CGRectMake(0, 0, pixelWidth, pixelHeight));
-        [NSGraphicsContext saveGraphicsState];
-        NSGraphicsContext* nsContext = [NSGraphicsContext graphicsContextWithCGContext:context flipped:NO];
-        [NSGraphicsContext setCurrentContext:nsContext];
-        [icon drawInRect:NSMakeRect(0, 0, pixelWidth, pixelHeight)
-                fromRect:NSZeroRect
-               operation:NSCompositingOperationCopy
-                fraction:1.0];
-        [nsContext flushGraphics];
-        [NSGraphicsContext restoreGraphicsState];
-        CGContextRelease(context);
-        brixGraphicsCanvasPixelsChanged(canvas);
-        return canvas;
+        NSImage* icon = [bundle imageForResource:stringFromUTF8(iconName)];
+        return guiRenderNSImageToCanvas(icon, size, scale);
     }
 }
 

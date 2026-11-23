@@ -450,6 +450,9 @@ extern "C" bool brixGuiOpenPath(const char* path);
 extern "C" bool brixGuiOpenPathWithApp(const char* path, const char* appPath);
 extern "C" const char* brixGuiPathDisplayName(const char* path);
 extern "C" void* brixGuiPathIconCanvas(const char* path, double size, double scale);
+extern "C" const char* brixGuiBundleInfoValue(const char* bundlePath, const char* keyPath);
+extern "C" const char* brixGuiBundleLocalizedString(const char* bundlePath, const char* key, const char* table);
+extern "C" void* brixGuiBundleIconCanvas(const char* bundlePath, const char* iconName, double size, double scale);
 
 extern "C" void* brixGuiHotKeyRegister(
     uint32_t nativeKeyCode,
