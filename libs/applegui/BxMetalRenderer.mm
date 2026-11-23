@@ -3999,6 +3999,7 @@ static bool stackOverlaps(float3 stack) {
 
 constant uint kStackLimit = 8u;
 constant uint kStackRows = 16u;
+constant uint kStackTouching = 64u;
 
 static float stackedCoverageFast(
     uint fillRule,
@@ -4274,6 +4275,21 @@ static float stackedCoverage(
     if (lastRow < kStackRows) {
         coverage += float(kStackRows - lastRow) * baseCoverage;
     }
+    uint touching[kStackTouching];
+    uint touched = 0u;
+    for (uint i = 0; i < count && touched <= kStackTouching; ++i) {
+        float4 piece = pieces[start + i];
+        if (max(piece.y, piece.w) <= local.y || min(piece.y, piece.w) >= local.y + 1.0 ||
+            min(piece.x, piece.z) >= local.x + 1.0) {
+            continue;
+        }
+        if (touched < kStackTouching) {
+            touching[touched] = i;
+        }
+        ++touched;
+    }
+    bool listed = touched <= kStackTouching;
+    uint scanned = listed ? touched : count;
     for (uint row = firstRow; row < lastRow; ++row) {
         float top = local.y + float(row) * invRows;
         float bottom = top + invRows;
@@ -4281,8 +4297,8 @@ static float stackedCoverage(
         float edges[kStackLimit];
         float steps[kStackLimit];
         uint found = 0;
-        for (uint i = 0; i < count; ++i) {
-            float4 piece = pieces[start + i];
+        for (uint n = 0; n < scanned; ++n) {
+            float4 piece = pieces[start + (listed ? touching[n] : n)];
             float low = max(min(piece.y, piece.w), top);
             float high = min(max(piece.y, piece.w), bottom);
             if (high <= low || min(piece.x, piece.z) >= local.x + 1.0) {
