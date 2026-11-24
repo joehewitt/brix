@@ -13351,11 +13351,7 @@ extern "C" bool brixGuiMetalRendererSetOutputSurface(void* pointer, void* surfac
                                     height:IOSurfaceGetHeight(surface)
                                  mipmapped:NO];
     descriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
-#if TARGET_OS_OSX
-    descriptor.storageMode = renderer->device.hasUnifiedMemory ? MTLStorageModeShared : MTLStorageModeManaged;
-#else
     descriptor.storageMode = MTLStorageModeShared;
-#endif
     renderer->outputTexture = [renderer->device newTextureWithDescriptor:descriptor iosurface:surface plane:0];
     if (!renderer->outputTexture) {
         return false;

@@ -685,7 +685,7 @@ webViewFinishScript(const std::shared_ptr<BxWebViewScriptState>& state, bool suc
     id failing = [[error userInfo] objectForKey:NSURLErrorFailingURLErrorKey];
     NSString* url = [failing isKindOfClass:[NSURL class]]
         ? [static_cast<NSURL*>(failing) absoluteString]
-        : [[error userInfo] objectForKey:NSURLErrorFailingURLStringErrorKey];
+        : nil;
     [self sendEventKind:kWebViewLoadFailed
                   first:url ?: [[self.control URL] absoluteString]
                  second:[error localizedDescription]];

@@ -155,6 +155,7 @@ extern "C" double brixGuiWindowGetStoplightEdge(void* window);
 extern "C" void brixGuiWindowSetAllowsZoom(void* window, bool allowsZoom);
 extern "C" void brixGuiWindowSetKind(void* window, uint32_t kind);
 extern "C" void brixGuiWindowSetHasShadow(void* window, bool hasShadow);
+extern "C" void brixGuiWindowSetIgnoresPointer(void* window, bool ignoresPointer);
 extern "C" bool brixGuiWindowRequestDrag(void* window, uint64_t token);
 extern "C" void brixGuiWindowPerformTitlebarDoubleClick(void* window);
 extern "C" void brixGuiWindowSetContentSize(void* window, double width, double height);

@@ -1542,11 +1542,7 @@ bxGraphicsGPUCreateWithSurface(IOSurfaceRef surface) {
                                     height:IOSurfaceGetHeight(surface)
                                  mipmapped:NO];
     descriptor.usage = MTLTextureUsageShaderRead;
-#if TARGET_OS_OSX
-    descriptor.storageMode = bxGraphicsShaderDevice.hasUnifiedMemory ? MTLStorageModeShared : MTLStorageModeManaged;
-#else
     descriptor.storageMode = MTLStorageModeShared;
-#endif
     id<MTLTexture> texture = [bxGraphicsShaderDevice newTextureWithDescriptor:descriptor iosurface:surface plane:0];
     if (!texture) {
         return nullptr;

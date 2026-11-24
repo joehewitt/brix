@@ -864,6 +864,7 @@ struct BxGuiCommandShortcut {
 @property(nonatomic, assign) void* pointerContext;
 @property(nonatomic, assign) void* pointerContextRoot;
 @property(nonatomic, assign) BxGuiPointerCallback pointerCallback;
+@property(nonatomic, assign) BOOL ignoresPointer;
 @property(nonatomic, assign) void* eventContext;
 @property(nonatomic, assign) void* eventContextRoot;
 @property(nonatomic, assign) BxGuiWindowEventCallback eventCallback;
@@ -4154,7 +4155,7 @@ guiPresentCanvas(
 }
 
 - (void)dispatchPointerEvent:(NSEvent*)event kind:(uint32_t)kind {
-    if (!self.pointerCallback || self.closed) {
+    if (!self.pointerCallback || self.closed || self.ignoresPointer) {
         return;
     }
 
@@ -7011,6 +7012,15 @@ brixGuiWindowSetHasShadow(void* ptr, bool hasShadow) {
         host.window.hasShadow = hasShadow;
         [host markShadowStale];
     }
+}
+
+extern "C" void
+brixGuiWindowSetIgnoresPointer(void* ptr, bool ignoresPointer) {
+    BxGuiWindowHost* host = getWindow(ptr);
+    if (!host || host.closed) {
+        return;
+    }
+    host.ignoresPointer = ignoresPointer;
 }
 
 extern "C" void

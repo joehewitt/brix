@@ -108,10 +108,18 @@ directly.
 
 **Tiled or direct.** An eligible chunk draws tiled while either holds:
 - its level lands exactly, meaning the scale is a power of two;
-- its cull index estimates at least `raster-tiled-items` visible items. Once tiled, it stays tiled
-  until the estimate falls below the lower of `raster-direct-items` and `raster-tiled-items`.
+- its visible items cost at least `raster-tiled-cost`. Once tiled, it stays tiled until the cost
+  falls below the lower of `raster-direct-cost` and `raster-tiled-cost`.
 
-Both thresholds are `DisplayScene` properties.
+The cost is the cull index's estimate of visible items, or the raster range's item count when the
+chunk has no index, times the chunk's mean item cost:
+- **A path item** costs the segments it sends to the fill pipeline: its path's verbs once for a
+  fill and once for a stroke, summed over a vector geometry's spans.
+- **Every other item** costs 1, as do quads, text and text bars.
+- **The mean** is computed from the chunk's items the first time a decision needs it after a
+  recording, and kept until `path-generation` changes.
+
+Both thresholds are `DisplayScene` properties, 132,000 and 66,000 by default.
 
 **Grids and keys.**
 - **Octave level:** level ℓ = round(log2 scale) rasterizes 2^ℓ points per content unit. A cell

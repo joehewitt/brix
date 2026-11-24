@@ -129,7 +129,8 @@ they cannot show these. `/gui/bench/fixtures/window-frame-fixture` holds the sha
   `brixGuiEventClockSeconds`, the clock of real event timestamps and Metal presentation times, so
   it counts as `input` and the scroll resampler treats it as real. The log sends scrolls, moves,
   presses, drags, releases and magnifications. Latency is a best case, since the input always
-  arrives just after a frame.
+  arrives just after a frame. From `start` on, the window drops real pointer events, so a cursor
+  resting over it adds no hover work to the frames, nor raises the clock with it.
 - **Animation steps.** Work in an `(on tick frames)` handler runs inside the frame's `tick` part.
   A benchmark that animates there may also time it with `timed`, reported as `step`, to tell its
   own work from the clock's.

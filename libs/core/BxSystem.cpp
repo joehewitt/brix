@@ -255,6 +255,8 @@ addDirectory(posix_spawn_file_actions_t* actions, const char* directory) {
     (void)actions;
     (void)directory;
     return ENOTSUP;
+#elif defined(__APPLE__)
+    return posix_spawn_file_actions_addchdir(actions, directory);
 #else
     return posix_spawn_file_actions_addchdir_np(actions, directory);
 #endif

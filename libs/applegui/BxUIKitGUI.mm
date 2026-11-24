@@ -2042,6 +2042,7 @@ extern "C" void* brixGuiWindowCreateWithKind(const char* title, double width, do
     return brixGuiWindowCreate(title, width, height);
 }
 extern "C" void brixGuiWindowSetHasShadow(void* window, bool hasShadow) {}
+extern "C" void brixGuiWindowSetIgnoresPointer(void* window, bool ignoresPointer) {}
 extern "C" void brixGuiWindowHide(void* window) {}
 extern "C" bool brixGuiWindowIsVisible(void* window) { return false; }
 extern "C" double brixGuiMouseScreenBound(uint32_t component) { return 0; }
