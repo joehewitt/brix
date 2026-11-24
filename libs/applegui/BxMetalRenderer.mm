@@ -703,6 +703,8 @@ struct PresentGate {
     int32_t outstanding = 0;
     void* window = nullptr;
     void (*setPending)(void*, bool) = nullptr;
+    uint64_t (*frameFired)(void*) = nullptr;
+    void (*noteReady)(void*, uint64_t, uint64_t) = nullptr;
 };
 
 constexpr size_t kPresentDamageHistory = 8;
@@ -12730,6 +12732,8 @@ static void detachPresentGate(MetalRenderer* renderer) {
     }
     gate->window = nullptr;
     gate->setPending = nullptr;
+    gate->frameFired = nullptr;
+    gate->noteReady = nullptr;
 }
 
 static void waitForPresenter(MetalRenderer* renderer) {
@@ -12771,12 +12775,40 @@ static void watchPresentation(
 #endif
 }
 
+static uint64_t presentFiredNanos(const std::shared_ptr<PresentGate>& gate) {
+    return gate && gate->window && gate->frameFired ? gate->frameFired(gate->window) : 0;
+}
+
+static void reportPresentReady(
+    const std::shared_ptr<PresentGate>& gate,
+    uint64_t fired,
+    id<MTLCommandBuffer> commandBuffer
+) {
+    if (!fired) {
+        return;
+    }
+    std::shared_ptr<PresentGate> held = gate;
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+        double end = done.GPUEndTime;
+        if (end <= 0) {
+            return;
+        }
+        uint64_t ready = static_cast<uint64_t>(llround(end * 1e9));
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (held->window && held->noteReady) {
+                held->noteReady(held->window, fired, ready);
+            }
+        });
+    }];
+}
+
 static void enqueuePresent(MetalRenderer* renderer, int64_t frameId, int64_t serial) {
     std::shared_ptr<PresentGate> gate = renderer->presentGate;
     std::shared_ptr<PresentationState> state = renderer->presentationState;
     std::shared_ptr<PresentDamage> damage = renderer->presentDamage;
     CAMetalLayer* layer = renderer->presentationLayer;
     id<MTLTexture> source = renderer->target;
+    uint64_t fired = presentFiredNanos(gate);
     if (++gate->outstanding == 1 && gate->window && gate->setPending) {
         gate->setPending(gate->window, true);
     }
@@ -12806,6 +12838,7 @@ static void enqueuePresent(MetalRenderer* renderer, int64_t frameId, int64_t ser
                 );
                 watchPresentation(state, drawable, frameId);
                 [commandBuffer presentDrawable:drawable];
+                reportPresentReady(gate, fired, commandBuffer);
                 [commandBuffer commit];
             }
         }
@@ -13168,7 +13201,9 @@ static int32_t attachPresentation(
     bool (*setLayer)(void*, void*),
     void (*resetLayer)(void*),
     int32_t (*visibility)(void*),
-    void (*setPending)(void*, bool)
+    void (*setPending)(void*, bool),
+    uint64_t (*frameFired)(void*),
+    void (*noteReady)(void*, uint64_t, uint64_t)
 ) {
     if (!renderer) {
         return 0;
@@ -13218,6 +13253,8 @@ static int32_t attachPresentation(
         }
         renderer->presentGate->window = target;
         renderer->presentGate->setPending = setPending;
+        renderer->presentGate->frameFired = frameFired;
+        renderer->presentGate->noteReady = noteReady;
     }
     renderer->attachStatus = 1;
     renderer->maximumFramesPerSecond = framesPerSecond;
@@ -13233,7 +13270,9 @@ extern "C" int32_t brixGuiMetalRendererAttachWindow(void* pointer, void* window)
         brixGuiWindowSetCanvasLayer,
         brixGuiWindowResetCanvasLayer,
         brixGuiWindowPresentationVisibility,
-        brixGuiWindowSetPresentationPending
+        brixGuiWindowSetPresentationPending,
+        brixGuiWindowFrameFiredNanoseconds,
+        brixGuiWindowNoteFrameReady
     );
 }
 
@@ -13247,7 +13286,9 @@ extern "C" int32_t brixGuiMetalRendererAttachPopup(void* pointer, void* popup) {
         brixGuiPopupSetCanvasLayer,
         brixGuiPopupResetCanvasLayer,
         brixGuiPopupPresentationVisibility,
-        brixGuiPopupSetPresentationPending
+        brixGuiPopupSetPresentationPending,
+        nullptr,
+        nullptr
     );
 }
 
@@ -16283,6 +16324,7 @@ static bool encodeFrame(
         if (!presentsWithTransaction) {
             [commandBuffer presentDrawable:drawable];
         }
+        reportPresentReady(renderer->presentGate, presentFiredNanos(renderer->presentGate), commandBuffer);
     }
     if (recordsPresentation) {
         ++renderer->presentCount;

@@ -61,6 +61,10 @@ extern "C" int NSExtensionMain(int argc, const char** argv);
 
 @end
 
+static const uint32_t kGuiFrameCostHistory = 16;
+static const uint32_t kGuiFrameCostRank = 3;
+static const uint64_t kGuiFrameCostStaleNanoseconds = 100000000;
+
 struct BxGuiFrameTiming {
     uint64_t outputTimeNanoseconds;
     uint64_t targetTimeNanoseconds;
@@ -814,6 +818,9 @@ struct BxGuiCommandShortcut {
     std::string undoTitle;
     std::string redoTitle;
     std::vector<BxGuiCommandShortcut> commandShortcuts;
+    uint64_t frameCosts[kGuiFrameCostHistory];
+    uint32_t frameCostCount;
+    uint32_t frameCostNext;
 }
 
 @property(nonatomic, strong) NSWindow* window;
@@ -880,6 +887,7 @@ struct BxGuiCommandShortcut {
 @property(nonatomic, assign) uint64_t cursorRectRefreshCount;
 @property(nonatomic, assign) uint64_t lastFrameTargetTimeNanoseconds;
 @property(nonatomic, assign) uint64_t renderNotBeforeNanoseconds;
+@property(nonatomic, assign) uint64_t frameFiredNanoseconds;
 @property(nonatomic, assign) uint64_t lastFrameRefreshIntervalNanoseconds;
 @property(nonatomic, assign) double lastFrameEventTimeSeconds;
 @property(nonatomic, strong) BxGuiQuickLookPanelController* quickLookPanelController;
@@ -891,6 +899,8 @@ struct BxGuiCommandShortcut {
                              notBefore:(uint64_t)notBeforeNanoseconds;
 - (void)cancelRenderFrame;
 - (void)fireRenderFrameWithTiming:(BxGuiFrameTiming)timing;
+- (void)noteFrameCost:(uint64_t)cost;
+- (uint64_t)predictedFrameCost;
 - (void)beginFrameUpdate;
 - (void)finishFrameUpdate;
 - (void)markShadowStale;
@@ -2568,26 +2578,24 @@ struct BxGuiPendingFrame {
 
 struct BxGuiDisplayLink {
     CGDirectDisplayID display = kCGNullDirectDisplay;
-    CVDisplayLinkRef link = nullptr;
+    CADisplayLink* link = nil;
     bool running = false;
     bool drainHeld = false;
     std::atomic_bool drainPending{false};
-    uint64_t eventLeadNanoseconds = 0;
+    CFRunLoopTimerRef startTimer = nullptr;
     uint64_t lastFiredNanoseconds = 0;
     BxGuiFrameTiming latest = {};
     std::vector<BxGuiPendingFrame> pending;
 };
 
 static const uint64_t kGuiDisplayLinkIdleGraceNanoseconds = 250000000;
+static const uint64_t kGuiFrameDeadlineNanoseconds = 1500000;
+static const uint64_t kGuiFrameSafetyNanoseconds = 500000;
+static const uint64_t kGuiFrameStartMinimumDelayNanoseconds = 250000;
+static const CFTimeInterval kGuiFrameStartIdleSeconds = 1e9;
 
 [[clang::no_destroy]] static std::mutex guiFrameSchedulerMutex;
 static std::vector<BxGuiDisplayLink*> guiDisplayLinks;
-
-// `CVDisplayLinkStop` waits for the in-flight display-link callback to unwind, and that callback
-// takes `guiFrameSchedulerMutex`. Starting or stopping a link while holding that mutex therefore
-// deadlocks the main thread against the display-link thread. Each link's handle and run state live
-// under their own control mutex instead, which the display-link callback never touches.
-static std::mutex guiDisplayLinkControlMutex;
 
 static bool guiFrameLoopWaited = true;
 static uint64_t guiFrameEndedNanoseconds = 0;
@@ -2632,73 +2640,11 @@ guiMachTimeToNanoseconds(uint64_t machTime) {
 }
 
 static uint64_t
-guiTimestampToNanoseconds(const CVTimeStamp* timestamp) {
-    if (!timestamp) {
-        return 0;
-    }
-
-    if (timestamp->flags & kCVTimeStampHostTimeValid) {
-        uint64_t absolute = mach_absolute_time();
-        uint64_t continuous = mach_continuous_time();
-        return guiMachTimeToNanoseconds(timestamp->hostTime + (continuous - absolute));
-    }
-
-    if ((timestamp->flags & kCVTimeStampVideoTimeValid) &&
-        timestamp->videoTimeScale > 0 &&
-        timestamp->videoTime >= 0) {
-        return static_cast<uint64_t>(
-            (static_cast<__uint128_t>(timestamp->videoTime) * 1000000000ull) /
-            static_cast<uint64_t>(timestamp->videoTimeScale)
-        );
-    }
-
-    return 0;
-}
-
-static uint64_t
-guiRefreshIntervalNanoseconds(const CVTimeStamp* timestamp) {
-    if (!timestamp ||
-        !(timestamp->flags & kCVTimeStampVideoRefreshPeriodValid) ||
-        timestamp->videoTimeScale <= 0 ||
-        timestamp->videoRefreshPeriod <= 0) {
-        return 0;
-    }
-
-    return static_cast<uint64_t>(
-        (static_cast<__uint128_t>(timestamp->videoRefreshPeriod) * 1000000000ull) /
-        static_cast<uint64_t>(timestamp->videoTimeScale)
-    );
-}
-
-static double
-guiDisplayLinkEventTimeSeconds(
-    BxGuiDisplayLink* entry,
-    const CVTimeStamp* now,
-    const CVTimeStamp* outputTime,
-    uint64_t refreshNanoseconds
-) {
-    if (!now || !(now->flags & kCVTimeStampHostTimeValid)) {
-        return 0;
-    }
-    uint64_t nowNanoseconds = guiMachTimeToNanoseconds(now->hostTime);
-    if (!outputTime || !(outputTime->flags & kCVTimeStampHostTimeValid) || !refreshNanoseconds) {
-        return static_cast<double>(nowNanoseconds) / 1e9;
-    }
-    uint64_t outputNanoseconds = guiMachTimeToNanoseconds(outputTime->hostTime);
-    if (outputNanoseconds <= nowNanoseconds) {
-        entry->eventLeadNanoseconds = 0;
-        return static_cast<double>(nowNanoseconds) / 1e9;
-    }
-    int64_t lead = static_cast<int64_t>(outputNanoseconds - nowNanoseconds);
-    int64_t tracked = static_cast<int64_t>(entry->eventLeadNanoseconds);
-    if (!tracked) {
-        tracked = lead;
-    } else {
-        int64_t limit = static_cast<int64_t>(refreshNanoseconds / 16);
-        tracked += std::max(-limit, std::min(limit, lead - tracked)) / 32;
-    }
-    entry->eventLeadNanoseconds = static_cast<uint64_t>(tracked);
-    return static_cast<double>(outputNanoseconds - static_cast<uint64_t>(tracked)) / 1e9;
+guiMediaTimeToNanoseconds(CFTimeInterval seconds) {
+    uint64_t absolute = mach_absolute_time();
+    uint64_t continuous = mach_continuous_time();
+    return static_cast<uint64_t>(llround(seconds * 1e9)) +
+        guiMachTimeToNanoseconds(continuous - absolute);
 }
 
 static void
@@ -2714,24 +2660,81 @@ guiFrameSchedulerScheduleDrain(BxGuiDisplayLink* entry) {
     CFRunLoopWakeUp(mainRunLoop);
 }
 
-static CVReturn
-guiDisplayLinkCallback(
-    CVDisplayLinkRef displayLink,
-    const CVTimeStamp* now,
-    const CVTimeStamp* outputTime,
-    CVOptionFlags flagsIn,
-    CVOptionFlags* flagsOut,
-    void* displayLinkContext
-) {
-    BxGuiDisplayLink* entry = static_cast<BxGuiDisplayLink*>(displayLinkContext);
+static void
+guiFrameSchedulerDisarmStart(BxGuiDisplayLink* entry) {
+    if (entry->startTimer) {
+        CFRunLoopTimerSetNextFireDate(
+            entry->startTimer, CFAbsoluteTimeGetCurrent() + kGuiFrameStartIdleSeconds);
+    }
+}
+
+static void
+guiFrameSchedulerArmStart(BxGuiDisplayLink* entry, uint64_t delayNanoseconds) {
+    if (!entry->startTimer) {
+        entry->startTimer = CFRunLoopTimerCreateWithHandler(
+            nullptr,
+            CFAbsoluteTimeGetCurrent() + kGuiFrameStartIdleSeconds,
+            kGuiFrameStartIdleSeconds,
+            0,
+            0,
+            ^(CFRunLoopTimerRef timer) {
+                guiFrameSchedulerDisarmStart(entry);
+                guiFrameSchedulerDrain(entry);
+            });
+        CFRunLoopRef runLoop = CFRunLoopGetMain();
+        CFRunLoopAddTimer(runLoop, entry->startTimer, kCFRunLoopCommonModes);
+        CFRunLoopAddTimer(
+            runLoop, entry->startTimer, (__bridge CFStringRef)NSEventTrackingRunLoopMode);
+        CFRunLoopAddTimer(
+            runLoop, entry->startTimer, (__bridge CFStringRef)NSModalPanelRunLoopMode);
+    }
+    CFRunLoopTimerSetNextFireDate(
+        entry->startTimer, CFAbsoluteTimeGetCurrent() + static_cast<double>(delayNanoseconds) / 1e9);
+}
+
+static uint64_t
+guiFrameSchedulerStartDelay(const BxGuiFrameTiming& timing, uint64_t cost) {
+    if (cost == UINT64_MAX) {
+        return 0;
+    }
+    uint64_t margin = kGuiFrameDeadlineNanoseconds + std::max(kGuiFrameSafetyNanoseconds, cost / 4);
+    if (timing.targetTimeNanoseconds < cost + margin) {
+        return 0;
+    }
+    uint64_t start = timing.targetTimeNanoseconds - cost - margin;
+    uint64_t now = brixMonotonicTimeNanoseconds();
+    return start > now + kGuiFrameStartMinimumDelayNanoseconds ? start - now : 0;
+}
+
+@interface BxGuiDisplayLinkTarget : NSObject
+- (instancetype)initWithEntry:(BxGuiDisplayLink*)entry;
+- (void)tick:(CADisplayLink*)link;
+@end
+
+@implementation BxGuiDisplayLinkTarget {
+    BxGuiDisplayLink* _entry;
+}
+
+- (instancetype)initWithEntry:(BxGuiDisplayLink*)entry {
+    if ((self = [super init])) {
+        _entry = entry;
+    }
+    return self;
+}
+
+- (void)tick:(CADisplayLink*)link {
+    BxGuiDisplayLink* entry = _entry;
+    CFTimeInterval stamp = link.timestamp;
+    CFTimeInterval target = link.targetTimestamp;
     BxGuiFrameTiming timing = {};
-    timing.outputTimeNanoseconds = guiTimestampToNanoseconds(now);
-    timing.targetTimeNanoseconds = guiTimestampToNanoseconds(outputTime);
-    timing.refreshIntervalNanoseconds = guiRefreshIntervalNanoseconds(outputTime);
-    timing.eventTimeSeconds =
-        guiDisplayLinkEventTimeSeconds(entry, now, outputTime, timing.refreshIntervalNanoseconds);
+    timing.outputTimeNanoseconds = guiMediaTimeToNanoseconds(stamp);
+    timing.targetTimeNanoseconds = guiMediaTimeToNanoseconds(target);
+    timing.refreshIntervalNanoseconds = static_cast<uint64_t>(llround(
+        (target > stamp ? target - stamp : link.duration) * 1e9));
+    timing.eventTimeSeconds = stamp;
 
     bool wanted = false;
+    uint64_t cost = UINT64_MAX;
     {
         std::lock_guard<std::mutex> lock(guiFrameSchedulerMutex);
         timing.sequence = ++guiFrameSequence;
@@ -2740,16 +2743,29 @@ guiDisplayLinkCallback(
             wanted = brixMonotonicTimeNanoseconds() - entry->lastFiredNanoseconds >=
                 kGuiDisplayLinkIdleGraceNanoseconds;
         } else {
-            wanted = !timing.targetTimeNanoseconds ||
-                guiFrameSchedulerHasDue(entry, timing.targetTimeNanoseconds);
+            for (const BxGuiPendingFrame& frame : entry->pending) {
+                if (frame.notBeforeNanoseconds <= timing.targetTimeNanoseconds) {
+                    uint64_t predicted = [frame.window predictedFrameCost];
+                    cost = wanted ? std::max(cost, predicted) : predicted;
+                    wanted = true;
+                }
+            }
         }
     }
 
-    if (wanted) {
-        guiFrameSchedulerScheduleDrain(entry);
+    if (!wanted) {
+        return;
     }
-    return kCVReturnSuccess;
+    uint64_t delay = guiFrameSchedulerStartDelay(timing, cost);
+    if (delay) {
+        guiFrameSchedulerArmStart(entry, delay);
+    } else {
+        guiFrameSchedulerDisarmStart(entry);
+        guiFrameSchedulerDrain(entry);
+    }
 }
+
+@end
 
 static BxGuiDisplayLink*
 guiFrameSchedulerLinkFor(CGDirectDisplayID display) {
@@ -2777,51 +2793,57 @@ guiFrameSchedulerTakePending(BxGuiWindowHost* guiWindow) {
     return nullptr;
 }
 
+static NSScreen*
+guiScreenForDisplay(CGDirectDisplayID display) {
+    for (NSScreen* screen in [NSScreen screens]) {
+        NSNumber* number = [[screen deviceDescription] objectForKey:@"NSScreenNumber"];
+        if (number && static_cast<CGDirectDisplayID>([number unsignedIntValue]) == display) {
+            return screen;
+        }
+    }
+    return nil;
+}
+
 static bool
-guiFrameSchedulerEnsureDisplayLinkControlled(BxGuiDisplayLink* entry) {
+guiFrameSchedulerEnsureDisplayLink(BxGuiDisplayLink* entry) {
     if (entry->link) {
         return true;
     }
-
-    CVDisplayLinkRef link = nullptr;
-    CVReturn result = CVDisplayLinkCreateWithCGDisplay(entry->display, &link);
-    if (result != kCVReturnSuccess || !link) {
+    NSScreen* screen = guiScreenForDisplay(entry->display);
+    if (!screen) {
         return false;
     }
-
-    result = CVDisplayLinkSetOutputCallback(link, guiDisplayLinkCallback, entry);
-    if (result != kCVReturnSuccess) {
-        CVDisplayLinkRelease(link);
+    BxGuiDisplayLinkTarget* target = [[BxGuiDisplayLinkTarget alloc] initWithEntry:entry];
+    CADisplayLink* link = [screen displayLinkWithTarget:target selector:@selector(tick:)];
+    if (!link) {
         return false;
     }
-
+    float maximum = static_cast<float>([screen maximumFramesPerSecond]);
+    link.preferredFrameRateRange = CAFrameRateRangeMake(maximum, maximum, maximum);
+    link.paused = YES;
+    NSRunLoop* runLoop = [NSRunLoop mainRunLoop];
+    [link addToRunLoop:runLoop forMode:NSRunLoopCommonModes];
+    [link addToRunLoop:runLoop forMode:NSEventTrackingRunLoopMode];
+    [link addToRunLoop:runLoop forMode:NSModalPanelRunLoopMode];
     entry->link = link;
     return true;
 }
 
-// Reconciles a display's link with the scheduler's desired run state. Callers must not hold
-// `guiFrameSchedulerMutex`: both CoreVideo entry points block on the display-link thread, which
-// takes that mutex from its callback. Answers whether the link is running afterward.
 static bool
 guiFrameSchedulerApplyRunState(BxGuiDisplayLink* entry, bool shouldRun) {
-    std::lock_guard<std::mutex> lock(guiDisplayLinkControlMutex);
     if (!shouldRun) {
-        if (entry->running && entry->link) {
-            CVDisplayLinkStop(entry->link);
-        }
+        entry->link.paused = YES;
         entry->running = false;
         return false;
     }
-
-    if (!guiFrameSchedulerEnsureDisplayLinkControlled(entry)) {
+    if (!guiFrameSchedulerEnsureDisplayLink(entry)) {
         return false;
     }
-
     if (!entry->running) {
-        entry->eventLeadNanoseconds = 0;
-        entry->running = CVDisplayLinkStart(entry->link) == kCVReturnSuccess;
+        entry->link.paused = NO;
+        entry->running = true;
     }
-    return entry->running;
+    return true;
 }
 
 static CGDirectDisplayID
@@ -2859,6 +2881,12 @@ guiFrameSchedulerRehome(void) {
             entry->pending.clear();
             entry->drainHeld = false;
         }
+    }
+    for (BxGuiDisplayLink* entry : guiDisplayLinks) {
+        [entry->link invalidate];
+        entry->link = nil;
+        entry->running = false;
+        guiFrameSchedulerDisarmStart(entry);
     }
     for (BxGuiWindowHost* guiWindow : windows) {
         guiFrameSchedulerRequest(guiWindow);
@@ -2994,11 +3022,7 @@ guiFrameSchedulerScheduleWindowDrain(BxGuiWindowHost* guiWindow) {
 static void
 guiFrameSchedulerDrain(BxGuiDisplayLink* entry) {
     guiMainNoteActivity();
-    bool linked = false;
-    {
-        std::lock_guard<std::mutex> lock(guiDisplayLinkControlMutex);
-        linked = entry->running;
-    }
+    bool linked = entry->running;
 
     std::vector<BxGuiWindowHost*> windows;
     BxGuiFrameTiming timing = {};
@@ -4354,6 +4378,11 @@ guiPresentCanvas(
     }
 
     if (scheduledCallback) {
+        uint64_t fired = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+        if (fired - self.frameFiredNanoseconds > kGuiFrameCostStaleNanoseconds) {
+            frameCostCount = 0;
+        }
+        self.frameFiredNanoseconds = fired;
         uint64_t idleDeadlineNanoseconds = timing.targetTimeNanoseconds;
         if (timing.refreshIntervalNanoseconds) {
             idleDeadlineNanoseconds = timing.outputTimeNanoseconds >
@@ -4372,6 +4401,23 @@ guiPresentCanvas(
 - (NSDragOperation)draggingSession:(NSDraggingSession*)session
     sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
     return NSDragOperationCopy;
+}
+
+- (void)noteFrameCost:(uint64_t)cost {
+    frameCosts[frameCostNext] = cost;
+    frameCostNext = (frameCostNext + 1) % kGuiFrameCostHistory;
+    frameCostCount = std::min(frameCostCount + 1, kGuiFrameCostHistory);
+}
+
+- (uint64_t)predictedFrameCost {
+    if (frameCostCount < kGuiFrameCostHistory / 2) {
+        return UINT64_MAX;
+    }
+    uint64_t sorted[kGuiFrameCostHistory];
+    std::copy(frameCosts, frameCosts + frameCostCount, sorted);
+    uint64_t* rank = sorted + kGuiFrameCostRank - 1;
+    std::nth_element(sorted, rank, sorted + frameCostCount, std::greater<uint64_t>());
+    return *rank;
 }
 
 @end
@@ -8027,6 +8073,20 @@ brixGuiWindowCommitMetalFrame(void* ptr) {
     }
     [guiWindow finishFrameUpdate];
     guiRecordResizeFrameCommit(guiWindow);
+}
+
+extern "C" uint64_t
+brixGuiWindowFrameFiredNanoseconds(void* ptr) {
+    BxGuiWindowHost* guiWindow = getWindow(ptr);
+    return guiWindow ? guiWindow.frameFiredNanoseconds : 0;
+}
+
+extern "C" void
+brixGuiWindowNoteFrameReady(void* ptr, uint64_t firedNanoseconds, uint64_t readyNanoseconds) {
+    BxGuiWindowHost* guiWindow = getWindow(ptr);
+    if (guiWindow && firedNanoseconds && readyNanoseconds > firedNanoseconds) {
+        [guiWindow noteFrameCost:readyNanoseconds - firedNanoseconds];
+    }
 }
 
 extern "C" bool

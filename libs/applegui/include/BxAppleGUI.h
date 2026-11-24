@@ -236,6 +236,8 @@ extern "C" bool brixGuiWindowSetCanvasLayer(void* window, void* layer);
 extern "C" void brixGuiWindowResetCanvasLayer(void* window);
 extern "C" int32_t brixGuiWindowPresentationVisibility(void* window);
 extern "C" void brixGuiWindowSetPresentationPending(void* window, bool pending);
+extern "C" uint64_t brixGuiWindowFrameFiredNanoseconds(void* window);
+extern "C" void brixGuiWindowNoteFrameReady(void* window, uint64_t fired, uint64_t ready);
 extern "C" int32_t brixGuiWindowGetMaximumFramesPerSecond(void* window);
 extern "C" void brixGuiWindowAbortFrame(void* window);
 extern "C" void brixGuiWindowRequestFrame(
